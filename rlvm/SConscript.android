@@ -1,0 +1,46 @@
+Import('env')
+
+root_env = env.Clone()
+root_env.Append(LIBS=["GL", "c++_shared"])
+
+root_env.Append(
+  CXXFLAGS = [
+    "--ansi",
+    "-std=c++11"
+  ],
+
+  LINKFLAGS = [
+    "-Wl,--no-undefined",
+    "-Lbuild/libraries",
+    "-L../rlvm-r/scripts/toolchain/arm/sysroot/usr/lib",
+  ],
+
+  LIBS = [
+    "vorbisfile",
+    "vorbis",
+    "ogg",
+    "SDL2",
+    "SDL2_ttf",
+    "SDL2_image",
+    "sndfile",
+    "log",
+  ]
+)
+
+androidrlvm_files = [
+  # Technically cross platform, but put here for SDL dependency.
+  "src/machine/rlvm_instance.cc",
+
+  "src/platforms/android/rlvm.cpp",
+  "src/platforms/android/AndroidRLVMInstance.cpp",
+
+  "libguichan_platform.a",
+  "libsystem_sdl.a",
+  "librlvm.a",
+
+  "../libraries/libguichan.a",
+  "../libraries/libzita-resampler.a",
+]
+
+root_env['STATIC_AND_SHARED_OBJECTS_ARE_THE_SAME']=1
+root_env.SharedLibrary('game', androidrlvm_files)

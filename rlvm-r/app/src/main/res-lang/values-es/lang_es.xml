@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">rlvm</string>
+    <string name="subtitle">Emulador de RealLive</string>
+    <string name="pick_game_folder">Elegir carpeta del juego…</string>
+    <string name="resume_game">Continuar juego</string>
+    <string name="last_path">Última carpeta: %1$s</string>
+    <string name="error_path_not_found">No se encontró la carpeta del juego. Por favor, elíjala de nuevo.</string>
+    <string name="error_path_resolve">No se pudo convertir la carpeta elegida en una ruta real. Pruebe con otra carpeta.</string>
+    <string name="permission_required_toast">Se requiere acceso al almacenamiento para leer los archivos del juego. Por favor, concédalo en Ajustes.</string>
+    <string name="permission_restricted_fallback">Acceso total a archivos restringido. Intentando elegir carpeta directamente…</string>
+    <string name="back_again_to_exit">Presione atrás, otra vez para salir</string>
+    <string name="version_format">Versión %1$s</string>
+</resources>

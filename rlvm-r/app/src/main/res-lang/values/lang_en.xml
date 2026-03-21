@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">rlvm</string>
+    <string name="subtitle">RealLive Emulator</string>
+    <string name="pick_game_folder">Pick game folder…</string>
+    <string name="resume_game">Resume Game</string>
+    <string name="last_path">Last folder: %1$s</string>
+    <string name="error_path_not_found">Game directory not found. Please pick it again.</string>
+    <string name="error_path_resolve">Could not resolve the selected folder to a real path. Try a different folder.</string>
+    <string name="permission_required_toast">Storage access is required to read game files. Please grant it in Settings.</string>
+    <string name="permission_restricted_fallback">Broad file access restricted. Trying folder picker directly…</string>
+    <string name="back_again_to_exit">Press back, again to exit</string>
+    <string name="version_format">Version %1$s</string>
+</resources>

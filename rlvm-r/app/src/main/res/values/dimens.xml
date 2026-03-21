@@ -1,0 +1,20 @@
+<resources>
+    <!-- Logo size -->
+    <dimen name="logo_size">128dp</dimen>
+    <dimen name="logo_corner_radius">32dp</dimen>
+
+    <!-- Text sizes -->
+    <dimen name="text_title">28sp</dimen>
+    <dimen name="text_subtitle">14sp</dimen>
+    <dimen name="text_path">12sp</dimen>
+
+    <!-- Margins and Spacing -->
+    <dimen name="margin_small">8dp</dimen>
+    <dimen name="margin_medium">16dp</dimen>
+    <dimen name="margin_large">24dp</dimen>
+    <dimen name="margin_extra_large">32dp</dimen>
+
+    <!-- Button sizes -->
+    <dimen name="button_width">220dp</dimen>
+    <dimen name="button_launch_width">260dp</dimen>
+</resources>

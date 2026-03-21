@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">rlvm</string>
+    <string name="subtitle">RealLive エミュレータ</string>
+    <string name="pick_game_folder">ゲームフォルダを選択…</string>
+    <string name="resume_game">ゲームを再開</string>
+    <string name="last_path">最後のフォルダ: %1$s</string>
+    <string name="error_path_not_found">ゲームディレクトリが見つかりません。もう一度選択してください。</string>
+    <string name="error_path_resolve">選択したフォルダを実際のパスに解決できませんでした。別のフォルダを試してください。</string>
+    <string name="permission_required_toast">ゲームファイルを読み取るにはストレージへのアクセス権限が必要です。設定で許可してください。</string>
+    <string name="permission_restricted_fallback">広範なファイルアクセスが制限されています。直接フォルダピッカーを試しています…</string>
+    <string name="back_again_to_exit">もう一度戻るを押すと終了します</string>
+    <string name="version_format">バージョン %1$s</string>
+</resources>

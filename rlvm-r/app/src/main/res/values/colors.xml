@@ -1,0 +1,19 @@
+<resources>
+    <!-- Basic semantic colors -->
+    <color name="primary">#FF7C4DFF</color>
+    <color name="primary_dark">#FF5E35B1</color>
+    <color name="accent">#FF7C4DFF</color>
+
+    <color name="background">#FF121212</color>
+    <color name="surface">#FF1E1E1E</color>
+
+    <color name="on_primary">#FFFFFFFF</color>
+    <color name="on_background">#FFFFFFFF</color>
+    <color name="on_surface">#FFFFFFFF</color>
+
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#B3FFFFFF</color>
+
+    <!-- Launcher background -->
+    <color name="ic_launcher_background">#FF1A0A2E</color>
+</resources>

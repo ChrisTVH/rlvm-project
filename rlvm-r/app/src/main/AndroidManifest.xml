@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+        MANAGE_EXTERNAL_STORAGE: grants full filesystem access on Android 11+
+        (API 30+), required so the native engine can read game files without
+        the Storage Access Framework indirection.
+        Note: Google Play requires a declaration justifying this permission;
+        there is no such restriction for direct (sideload) distribution.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!--
+        READ_EXTERNAL_STORAGE: legacy permission for Android ≤10 (API ≤29).
+        maxSdkVersion="29" ensures it is not requested on newer versions.
+    -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+
+    <queries>
+        <intent>
+            <action android:name="android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RLVM">
+
+        <!--
+            Declare 16 KB page-size compatibility.
+            Required for Google Play submission targeting Android 15+ (API 35+)
+            as of November 1st, 2025. All native .so files must be compiled with
+            -Wl,-z,max-page-size=16384 for this to be effective.
+            See: https://developer.android.com/guide/practices/page-sizes
+        -->
+        <property
+            android:name="android.phone.PAGE_SIZE_COMPAT"
+            android:value="16384" />
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".GameActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="false"
+            android:process=":game"
+            android:screenOrientation="sensorLandscape" />
+
+    </application>
+
+</manifest>
