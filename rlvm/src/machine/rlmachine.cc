@@ -35,11 +35,20 @@
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/path.hpp>
 
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <iterator>
 #include <sstream>
 #include <string>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#define LOG_TAG "RLVM"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#else
+#define LOGI(...) fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#endif
 #include <vector>
 
 #include "libreallive/archive.h"
@@ -58,6 +67,7 @@
 #include "machine/rloperation.h"
 #include "machine/serialization.h"
 #include "machine/stack_frame.h"
+#include "encodings/codepage.h"
 #include "systems/base/graphics_system.h"
 #include "systems/base/system.h"
 #include "systems/base/system_error.h"
@@ -105,6 +115,9 @@ RLMachine::RLMachine(System& in_system, libreallive::Archive& in_archive)
     : memory_(new Memory(*this, in_system.gameexe())),
       archive_(in_archive),
       system_(in_system) {
+  // Load encoding override from user config (for fan translations)
+  LoadEncodingConfig();
+
   // Search in the Gameexe for #SEEN_START and place us there
   Gameexe& gameexe = in_system.gameexe();
   libreallive::Scenario* scenario = NULL;
@@ -546,7 +559,45 @@ void RLMachine::ExecuteExpression(const libreallive::ExpressionElement& e) {
 }
 
 int RLMachine::GetTextEncoding() const {
+  // If user has overridden encoding, use that instead
+  if (encoding_override_ >= 0) {
+    return encoding_override_;
+  }
   return call_stack_.back().scenario->encoding();
+}
+
+void RLMachine::SetEncodingOverride(int encoding) {
+  encoding_override_ = encoding;
+}
+
+void RLMachine::LoadEncodingConfig() {
+  const char* home_env = std::getenv("HOME");
+  if (home_env == nullptr) {
+    LOGI("LoadEncodingConfig: HOME is null");
+    return;
+  }
+
+  LOGI("LoadEncodingConfig: HOME=%s", home_env);
+
+  fs::path home_path(home_env);
+  fs::path config_path = home_path / ".rlvm" / "encoding.cfg";
+
+  LOGI("LoadEncodingConfig: config_path=%s", config_path.c_str());
+
+  fs::ifstream file(config_path);
+  if (file.is_open()) {
+    int encoding;
+    if (file >> encoding) {
+      LOGI("LoadEncodingConfig: read encoding=%d", encoding);
+      if (encoding >= 0 && encoding <= 4) {
+        encoding_override_ = encoding;
+        LOGI("LoadEncodingConfig: SUCCESS, encoding_override_=%d", encoding_override_);
+      }
+    }
+    file.close();
+  } else {
+    LOGI("LoadEncodingConfig: FAILED to open file");
+  }
 }
 
 int RLMachine::GetProbableEncodingType() const {
@@ -564,6 +615,8 @@ void RLMachine::PerformTextout(const libreallive::TextoutElement& e) {
 }
 
 void RLMachine::PerformTextout(const std::string& cp932str) {
+  LOGI("PerformTextout: encoding=%d, input.size()=%zu", GetTextEncoding(), cp932str.size());
+
   std::string name_parsed_text;
   try {
     parseNames(*memory_, cp932str, name_parsed_text, GetTextEncoding());
@@ -574,7 +627,152 @@ void RLMachine::PerformTextout(const std::string& cp932str) {
     name_parsed_text = cp932str;
   }
 
-  std::string utf8str = cp932toUTF8(name_parsed_text, GetTextEncoding());
+  std::string utf8str;
+  if (GetTextEncoding() == 4) {
+    // UTF-8 mode: The bytecode contains MIXED encoding:
+    // - Characters like 【 are in CP932 (0x81 0x79)
+    // - Characters like í are already in UTF-8 (0xC3 0xAD)
+    // - Bytes arrive one at a time from strout
+    // We need an accumulator to handle CP932 two-byte sequences.
+    
+    // Static accumulator for CP932 lead bytes
+    static unsigned char cp932_lead = 0;
+    
+    unsigned char c = static_cast<unsigned char>(name_parsed_text[0]);
+    
+    if (cp932_lead != 0) {
+      // We have a pending CP932 lead byte, this is the trail byte
+      unsigned char c2 = c;
+      if (c2 >= 0x40 && c2 <= 0xFC && c2 != 0x7F) {
+        // Valid CP932 two-byte sequence: convert to UTF-8
+        uint16_t cp932_char = (cp932_lead << 8) | c2;
+        Codepage& cp = Cp::instance(0);  // Use CP932 codec
+        uint16_t unicode = cp.JisDecode(cp932_char);
+        uint16_t codepoint = cp.Convert(unicode);
+        
+        // Encode as UTF-8
+        if (codepoint < 0x80) {
+          utf8str += static_cast<char>(codepoint);
+        } else if (codepoint < 0x800) {
+          utf8str += static_cast<char>(0xC0 | (codepoint >> 6));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else {
+          utf8str += static_cast<char>(0xE0 | (codepoint >> 12));
+          utf8str += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+      }
+      cp932_lead = 0;  // Clear accumulator
+    } else if (c >= 0x81 && c <= 0x9F) {
+      // CP932 lead byte: save and wait for trail byte
+      // But DON'T return - just skip this byte, the trail byte will be processed next
+      cp932_lead = c;
+      // Don't set utf8str - we'll wait for the trail byte
+    } else if ((c & 0xE0) == 0xC0 || (c & 0xF0) == 0xE0 || (c & 0xF8) == 0xF0) {
+      // UTF-8 multi-byte: pass through (already valid UTF-8)
+      utf8str = name_parsed_text;
+    } else if (c < 0x80) {
+      // ASCII: pass through
+      utf8str = name_parsed_text;
+    } else {
+      // Unknown byte: pass through (might be katakana, etc.)
+      utf8str = name_parsed_text;
+    }
+  } else {
+    // Other encodings: convert to UTF-8
+    utf8str = cp932toUTF8(name_parsed_text, GetTextEncoding());
+  }
+  LOGI("PerformTextout: utf8str.size()=%zu", utf8str.size());
+
+  // === UTF-8 ACCUMULATOR ===
+  //
+  // Three sources call PerformTextout in encoding=4 mode:
+  //
+  // A) strout with a COMPLETE string (protagonist/narrator text, names):
+  //    The entire string arrives in one call as valid UTF-8 or as a mix of
+  //    ASCII and JisEncoded bytes. Must be sent whole.
+  //
+  // B) rlBabel TextoutGetChar: one char at a time, already decoded to real
+  //    UTF-8 by CopyOneUtf8Character (e.g. 2 bytes 0xC3 0xA1 for a-acute).
+  //
+  // C) TextoutElement (bytecode direct): ONE JisEncoded byte per call.
+  //    rldev stores western chars with JisEncode(): a-acute(0xE1)->0xC2.
+  //
+  // Strategy:
+  //   - If empty, do nothing.
+  //   - If SINGLE byte: feed accumulator (handles C and byte-at-a-time B).
+  //   - If MULTI byte: already valid UTF-8 — send directly (handles A and B).
+  if (GetTextEncoding() == 4) {
+    if (utf8str.empty()) {
+      return;
+    }
+
+    if (utf8str.size() == 1) {
+      unsigned char b = static_cast<unsigned char>(utf8str[0]);
+      if (b >= 0x80) {
+        // Non-ASCII single byte: feed accumulator and decode one char.
+        utf8_accumulator_ += utf8str;
+        unsigned char lead = static_cast<unsigned char>(utf8_accumulator_[0]);
+        std::string decoded;
+
+        if (lead >= 0xA1 && lead <= 0xDF) {
+          // JisEncoded CP1252: reverse JisEncode then emit UTF-8
+          unsigned char cp1252 = lead + 0x1F;
+          unsigned int  cp     = cp1252;
+          char ul = static_cast<char>(0xC0 | (cp >> 6));
+          char ut = static_cast<char>(0x80 | (cp & 0x3F));
+          decoded += ul;
+          decoded += ut;
+          utf8_accumulator_.erase(0, 1);
+          LOGI("PerformTextout: JisEnc 0x%02x -> 0x%02x 0x%02x",
+               lead, (unsigned char)ul, (unsigned char)ut);
+        } else if (lead >= 0xC0 && lead <= 0xDF) {
+          // 2-byte UTF-8 lead: wait for continuation
+          if (utf8_accumulator_.size() < 2) return;
+          unsigned char c1 = static_cast<unsigned char>(utf8_accumulator_[1]);
+          if ((c1 & 0xC0) == 0x80) {
+            decoded = utf8_accumulator_.substr(0, 2);
+            utf8_accumulator_.erase(0, 2);
+          } else {
+            utf8_accumulator_.erase(0, 1);
+            return;
+          }
+        } else if (lead >= 0xE0) {
+          // 3/4-byte UTF-8 lead: wait for continuation bytes
+          int xp = ((lead & 0xF8) == 0xF0) ? 4 : 3;
+          if ((int)utf8_accumulator_.size() < xp) return;
+          bool valid = true;
+          for (int i = 1; i < xp; i++)
+            if ((static_cast<unsigned char>(utf8_accumulator_[i]) & 0xC0) != 0x80) {
+              valid = false; break;
+            }
+          if (valid) {
+            decoded = utf8_accumulator_.substr(0, xp);
+            utf8_accumulator_.erase(0, xp);
+          } else {
+            utf8_accumulator_.erase(0, 1);
+            return;
+          }
+        } else {
+          // 0x80-0xA0: stray continuation — discard
+          utf8_accumulator_.erase(0, 1);
+          LOGI("PerformTextout: discarding stray byte 0x%02x", lead);
+          return;
+        }
+
+        if (decoded.empty()) return;
+        utf8str = decoded;
+      }
+      // else: plain ASCII single byte — send as-is, accumulator not needed
+    } else {
+      // Multi-byte string: already valid UTF-8 (protagonist text via strout,
+      // or rlBabel complete char). Clear any stale accumulator and send whole.
+      utf8_accumulator_.clear();
+      LOGI("PerformTextout: multi-byte string size=%zu", utf8str.size());
+    }
+  }
+  // === END ACCUMULATOR ===
+
   TextSystem& ts = system().text();
 
   // Display UTF-8 characters

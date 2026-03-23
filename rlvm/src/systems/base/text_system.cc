@@ -624,6 +624,10 @@ std::shared_ptr<Surface> TextSystem::RenderText(const std::string& utf8str,
   total_height += current_line_height;
   should_break = false;
 
+  // Add ~25% of font size as descent padding so that descenders (g, p, q, y)
+  // and diacritics on the last line are not clipped at the bottom.
+  total_height += std::max(4, size / 4);
+
   // If this text has a shadow, our surface needs to have a final two pixels
   // added to the bottom and right to accommodate it.
   if (shadow_colour) {
@@ -856,7 +860,12 @@ void parseNames(const Memory& memory,
   const char LOWER_BYTE_FULLWIDTH_PERCENT = 0x93;
 
   while (*cur) {
-    if (cur[0] == 0x81 && (cur[1] == LOWER_BYTE_FULLWIDTH_ASTERISK ||
+    // The name-reference pattern (0x81 0x96/0x93 ...) is a CP932 construct.
+    // In UTF-8 mode (encoding=4) these byte values have entirely different
+    // meanings, so skip this branch entirely to avoid misinterpreting UTF-8
+    // continuation bytes or fragments of multi-byte characters.
+    if (encoding != 4 &&
+        cur[0] == 0x81 && (cur[1] == LOWER_BYTE_FULLWIDTH_ASTERISK ||
                            cur[1] == LOWER_BYTE_FULLWIDTH_PERCENT)) {
       char type = cur[1];
       cur += 2;
@@ -878,6 +887,9 @@ void parseNames(const Memory& memory,
       if (encoding == 0) {
         // Shift-JIS: use proper lead byte detection
         CopyOneShiftJisCharacter(cur, output);
+      } else if (encoding == 4) {
+        // UTF-8: copy multi-byte character correctly
+        CopyOneUtf8Character(cur, output);
       } else {
         // Single-byte encodings (CP1252, etc.): copy one byte at a
         // time.  Bytes like 0xE9 (é) would be misidentified as

@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -31,7 +32,7 @@ class MainActivity : AppCompatActivity() {
             if (hasAllFilesPermission()) {
                 pickDirectory.launch(null)
             } else {
-                Toast.makeText(this, R.string.permission_required_toast, Toast.LENGTH_LONG).show()
+                showPermissionRequiredDialog()
             }
         }
 
@@ -40,7 +41,7 @@ class MainActivity : AppCompatActivity() {
             if (granted) {
                 pickDirectory.launch(null)
             } else {
-                Toast.makeText(this, R.string.permission_required_toast, Toast.LENGTH_LONG).show()
+                showPermissionRequiredDialog()
             }
         }
 
@@ -67,6 +68,18 @@ class MainActivity : AppCompatActivity() {
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
+        }
+
+        // Setup settings FAB
+        binding.fabSettings.setOnClickListener {
+            val intent = Intent(this, SettingsActivity::class.java)
+            // Pass current game path if available
+            val lastPath = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getString(KEY_LAST_PATH, null)
+            if (lastPath != null) {
+                intent.putExtra(SettingsActivity.EXTRA_GAME_PATH, lastPath)
+            }
+            startActivity(intent)
         }
 
         binding.btnLaunch.setOnClickListener {
@@ -112,6 +125,14 @@ class MainActivity : AppCompatActivity() {
         } else {
             requestReadStorage.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+    }
+
+    private fun showPermissionRequiredDialog() {
+        AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_Dialog)
+            .setTitle(R.string.settings)
+            .setMessage(R.string.permission_required_dialog)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     // ------------------------------------------------------------------
@@ -164,9 +185,13 @@ class MainActivity : AppCompatActivity() {
             binding.tvLastPath.visibility = View.VISIBLE
             binding.btnResume.visibility = View.VISIBLE
             binding.btnResume.setOnClickListener { launchGame(lastPath) }
+            // Show settings FAB only when a game is configured
+            binding.fabSettings.visibility = View.VISIBLE
         } else {
             binding.tvLastPath.visibility = View.GONE
             binding.btnResume.visibility = View.GONE
+            // Hide settings FAB when no game is configured
+            binding.fabSettings.visibility = View.GONE
         }
     }
 
@@ -175,7 +200,9 @@ class MainActivity : AppCompatActivity() {
             .putString(KEY_LAST_PATH, path)
             .apply()
         updateLastPathUI()
-        launchGame(path)
+
+        // Don't launch immediately - let user click "Load Game" button
+        // launchGame(path)
     }
 
     private fun launchGame(homePath: String) {

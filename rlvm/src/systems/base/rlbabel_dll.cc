@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "encodings/codepage.h"
+#include "encodings/utf8.h"
 #include "encodings/western.h"
 #include "libreallive/gameexe.h"
 #include "libreallive/intmemref.h"
@@ -191,9 +192,12 @@ int RlBabelDLL::Initialize(int dllno, int windname) {
 
 int RlBabelDLL::TextoutAdd(const std::string& str) {
   const char* string = str.c_str();
+  int encoding = machine_.GetTextEncoding();
 
   while (*string) {
-    if (string[0] == 0x81 && (string[1] == 0x93 || string[1] == 0x96) &&
+    // For UTF-8, skip CP932 name patterns (they don't apply)
+    if (encoding != 4 &&
+        string[0] == 0x81 && (string[1] == 0x93 || string[1] == 0x96) &&
         string[2] == 0x82 && (string[3] >= 0x60 && string[3] <= 0x79)) {
       // Name reference: expand it.
       bool global = string[1] == 0x96;
@@ -242,7 +246,12 @@ int RlBabelDLL::TextoutAdd(const std::string& str) {
       ++string;
     } else {
       // Normal char: copy 1 or 2 bytes as appropriate.
-      AppendChar(string);
+      if (encoding == 4) {
+        // UTF-8: copy multi-byte character correctly
+        CopyOneUtf8Character(string, cp932_text_buffer);
+      } else {
+        AppendChar(string);
+      }
     }
   }
 
@@ -250,16 +259,28 @@ int RlBabelDLL::TextoutAdd(const std::string& str) {
 }
 
 void RlBabelDLL::AppendChar(const char*& ch) {
+  int encoding = machine_.GetTextEncoding();
+
   if (add_is_italic) {
-    uint16_t uc = *ch++;
-    if (shiftjis_lead_byte(uc))
-      uc = (uc << 8) | *ch++;
-    uc = Italicise(uc);
-    if (uc > 0xff)
-      cp932_text_buffer += uc >> 8;
-    cp932_text_buffer += uc & 0xff;
+    if (encoding == 4) {
+      // UTF-8: copy bytes directly (italic not supported for multi-byte)
+      CopyOneUtf8Character(ch, cp932_text_buffer);
+    } else {
+      uint16_t uc = *ch++;
+      if (shiftjis_lead_byte(uc))
+        uc = (uc << 8) | *ch++;
+      uc = Italicise(uc);
+      if (uc > 0xff)
+        cp932_text_buffer += uc >> 8;
+      cp932_text_buffer += uc & 0xff;
+    }
   } else {
-    CopyOneShiftJisCharacter(ch, cp932_text_buffer);
+    if (encoding == 4) {
+      // UTF-8: copy multi-byte character correctly
+      CopyOneUtf8Character(ch, cp932_text_buffer);
+    } else {
+      CopyOneShiftJisCharacter(ch, cp932_text_buffer);
+    }
   }
 }
 
@@ -453,9 +474,23 @@ int RlBabelDLL::TextoutGetChar(StringReferenceIterator buffer,
         // and the first hyphen after the token.
         while (end_token() == ' ')
           ++end_token_index;
-        while (!token_delimiter(end_token()))
-          end_token_index += 1 + shiftjis_lead_byte(end_token()) +
-                             (end_token() == 6 || end_token() == 7 ? 2 : 0);
+        while (!token_delimiter(end_token())) {
+          int encoding = machine_.GetTextEncoding();
+          if (encoding == 4) {
+            // Use validated length: only consume continuation bytes that are
+            // actually valid (10xxxxxx).  JisEncoded single bytes (0xA1-0xDF)
+            // look like UTF-8 leads but are NOT followed by continuation bytes.
+            int remaining = static_cast<int>(cp932_text_buffer.size()) -
+                            static_cast<int>(end_token_index);
+            int bytes = utf8_validated_char_length(
+                &cp932_text_buffer[end_token_index], remaining);
+            end_token_index += bytes;
+          } else {
+            // CP932: use shiftjis_lead_byte
+            end_token_index += 1 + shiftjis_lead_byte(end_token()) +
+                               (end_token() == 6 || end_token() == 7 ? 2 : 0);
+          }
+        }
         if (end_token() == '-')
           ++end_token_index;
         // If the token will not fit on the current line, insert a
@@ -490,11 +525,32 @@ int RlBabelDLL::TextoutGetChar(StringReferenceIterator buffer,
   char first_byte = cp932_text_buffer[text_index++];
   std::string cp932_char_out;
   cp932_char_out += first_byte;
-  if (shiftjis_lead_byte(first_byte)) {
-    cp932_char_out += cp932_text_buffer[text_index++];
-    full_char = (cp932_char_out[0] << 8) | cp932_char_out[1];
+
+  int encoding = machine_.GetTextEncoding();
+  if (encoding == 4) {
+    // UTF-8: copy only bytes that are genuine continuation bytes (10xxxxxx).
+    // JisEncoded bytes (0xA1-0xDF) look like UTF-8 leads but are followed by
+    // unrelated ASCII bytes — validated length returns 1 for those.
+    unsigned char lead = static_cast<unsigned char>(first_byte);
+    int remaining = static_cast<int>(cp932_text_buffer.size()) -
+                    static_cast<int>(text_index);  // bytes after first_byte
+    int bytes = utf8_validated_char_length(
+        &cp932_text_buffer[text_index - 1], remaining + 1);
+    for (int i = 1; i < bytes && text_index < cp932_text_buffer.size(); i++) {
+      cp932_char_out += cp932_text_buffer[text_index++];
+    }
+    // Decode UTF-8 to get Unicode codepoint for width calculation
+    unsigned int codepoint;
+    DecodeUtf8(cp932_char_out.c_str(), &codepoint);
+    full_char = static_cast<uint16_t>(codepoint);
   } else {
-    full_char = cp932_char_out[0];
+    // CP932: use shiftjis_lead_byte
+    if (shiftjis_lead_byte(first_byte)) {
+      cp932_char_out += cp932_text_buffer[text_index++];
+      full_char = (cp932_char_out[0] << 8) | cp932_char_out[1];
+    } else {
+      full_char = cp932_char_out[0];
+    }
   }
 
   // FIXME: what's wrong with nbsps?
@@ -570,11 +626,19 @@ int RlBabelDLL::TestGlosses(int x,
 
 int RlBabelDLL::GetCharWidth(uint16_t cp932_char, bool as_xmod) {
   Codepage& cp = Cp::instance(machine_.GetTextEncoding());
-  uint16_t native_char = cp.JisDecode(cp932_char);
-  uint16_t unicode_codepoint = cp.Convert(native_char);
+  uint16_t unicode_codepoint;
+
+  int encoding = machine_.GetTextEncoding();
+  if (encoding == 4) {
+    // UTF-8: use the cp932_char as codepoint directly (already decoded)
+    unicode_codepoint = cp932_char;
+  } else {
+    uint16_t native_char = cp.JisDecode(cp932_char);
+    unicode_codepoint = cp.Convert(native_char);
+  }
+
   std::shared_ptr<TextWindow> window = GetWindow(-1);
   int font_size = window->font_size_in_pixels();
-  // TODO(erg): Can I somehow modify this to try to do proper kerning?
   int width =
       machine_.system().text().GetCharWidth(font_size, unicode_codepoint);
   return as_xmod ? window->insertion_point_x() + width : width;
@@ -612,12 +676,12 @@ bool RlBabelDLL::LineBreakRequired() {
     // If the first character will fit on the current line, a line break is not
     // required.
     if (width < remaining_space) {
+      // ptr is already advanced by ConsumeNextCharacter, no double increment
       while (ptr < end_token_index) {
         cp932_char = ConsumeNextCharacter(ptr);
         int cw = GetCharWidth(cp932_char, false);
         if (width + cw >= remaining_space)
           break;
-        ptr += 1 + (cp932_char > 0xff);
         width += cw;
       }
 
@@ -632,12 +696,12 @@ bool RlBabelDLL::LineBreakRequired() {
 
     // If this is not the case, however, we truncate to fit on the
     // next line, and a break is required.
+    // ptr is already advanced by ConsumeNextCharacter, no double increment
     while (ptr < end_token_index) {
       cp932_char = ConsumeNextCharacter(ptr);
       int cw = GetCharWidth(cp932_char, false);
       if (width + cw >= remaining_space)
         break;
-      ptr += 1 + (cp932_char > 0xff);
       width += cw;
     }
 
@@ -653,8 +717,28 @@ bool RlBabelDLL::LineBreakRequired() {
 uint16_t RlBabelDLL::ConsumeNextCharacter(std::string::size_type& index) {
   char cp932sb = cp932_text_buffer[index++];
   uint16_t cp932 = cp932sb;
-  if (shiftjis_lead_byte(cp932sb))
-    cp932 = (cp932 << 8) | cp932_text_buffer[index++];
+
+  int encoding = machine_.GetTextEncoding();
+  if (encoding == 4) {
+    // UTF-8: only consume bytes that are genuine continuation bytes.
+    std::string utf8_char;
+    utf8_char += cp932sb;
+    unsigned char lead = static_cast<unsigned char>(cp932sb);
+    int remaining = static_cast<int>(cp932_text_buffer.size()) -
+                    static_cast<int>(index);
+    int bytes = utf8_validated_char_length(
+        &cp932_text_buffer[index - 1], remaining + 1);
+    for (int i = 1; i < bytes && index < cp932_text_buffer.size(); i++) {
+      utf8_char += cp932_text_buffer[index++];
+    }
+    unsigned int codepoint;
+    DecodeUtf8(utf8_char.c_str(), &codepoint);
+    cp932 = static_cast<uint16_t>(codepoint);
+  } else {
+    // CP932: use shiftjis_lead_byte
+    if (shiftjis_lead_byte(cp932sb))
+      cp932 = (cp932 << 8) | cp932_text_buffer[index++];
+  }
 
   return cp932;
 }

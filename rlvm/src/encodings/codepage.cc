@@ -44,6 +44,7 @@
 #include "encodings/cp936.h"
 #include "encodings/cp949.h"
 #include "encodings/western.h"
+#include "encodings/utf8.h"
 
 // -----------------------------------------------------------------------
 // Codepage
@@ -102,6 +103,9 @@ Codepage& Cp::instance(int desired) {
         break;
       case 3:
         instance_.reset(new Cp949());
+        break;
+      case 4:
+        instance_.reset(new Utf8());
         break;
       default:
         instance_.reset(new Cp932());

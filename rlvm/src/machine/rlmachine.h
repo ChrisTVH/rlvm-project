@@ -224,8 +224,14 @@ class RLMachine {
   //   1 -> CP936 within CP932 codespace
   //   2 -> CP1252 within CP932 codespace
   //   3 -> CP949 within CP932 codespace
+  //   4 -> UTF-8
   // Where a scenario was not compiled with RLdev, always returns 0.
+  // If encoding_override_ is set, it takes precedence over the scenario's encoding.
   int GetTextEncoding() const;
+
+  // Override the text encoding (e.g., from user config for fan translations)
+  void SetEncodingOverride(int encoding);
+  void LoadEncodingConfig();
 
   // Guess the encoding for all text of the game.
   //
@@ -369,6 +375,12 @@ class RLMachine {
   // Whether we should print an error to stderr when we encounter an undefined
   // opcode.
   bool print_undefined_opcodes_ = false;
+
+  // Override for text encoding (set from user config, -1 means no override)
+  int encoding_override_ = -1;
+
+  // Buffer to reassemble fragmented UTF-8 sequences from bytecode
+  std::string utf8_accumulator_;
 
   // States whether the machine should halt if an unhandled exception is thrown
   bool halt_on_exception_ = false;

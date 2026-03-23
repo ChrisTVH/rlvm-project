@@ -82,6 +82,42 @@ inline bool shiftjis_lead_byte(const char c) {
   return (c >= 0x81 && c <= 0x9f) || (c >= 0xe0 && c <= 0xfc);
 }
 
+// UTF-8 helper functions
+// Returns the number of bytes in a UTF-8 character based on the lead byte
+inline int utf8_char_length(unsigned char lead) {
+  if (lead < 0x80) return 1;
+  if ((lead & 0xE0) == 0xC0) return 2;
+  if ((lead & 0xF0) == 0xE0) return 3;
+  if ((lead & 0xF8) == 0xF0) return 4;
+  return 1;  // Invalid, treat as single byte
+}
+
+// Like utf8_char_length but validates that the required continuation bytes
+// (10xxxxxx) are actually present in the buffer.  If they are not — e.g.
+// because the byte is a JisEncoded CP1252 single-byte character followed by
+// an unrelated ASCII byte — returns 1 so the caller advances only one byte.
+// |buf| points to the lead byte; |buf_size| is the number of bytes remaining.
+inline int utf8_validated_char_length(const char* buf, int buf_size) {
+  if (buf_size <= 0) return 1;
+  unsigned char lead = static_cast<unsigned char>(buf[0]);
+  int expected = utf8_char_length(lead);
+  if (expected == 1) return 1;
+  if (buf_size < expected) return 1;  // truncated — treat as single byte
+  for (int i = 1; i < expected; i++) {
+    if ((static_cast<unsigned char>(buf[i]) & 0xC0) != 0x80)
+      return 1;  // not a continuation byte — treat lead as single byte
+  }
+  return expected;
+}
+
+// Checks if a byte is a UTF-8 lead byte (start of multi-byte character)
+inline bool utf8_lead_byte(const char c) {
+  return (static_cast<unsigned char>(c) & 0xC0) == 0xC0;
+}
+
+// Copies a single UTF-8 character into output and advances the string
+void CopyOneUtf8Character(const char*& str, std::string& output);
+
 // Advanced the Shift_JIS character string c by one char.
 void AdvanceOneShiftJISChar(const char*& c);
 

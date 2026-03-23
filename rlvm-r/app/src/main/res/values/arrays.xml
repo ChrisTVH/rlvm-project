@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="encoding_names_array">
+        <item>@string/encoding_auto</item>
+        <item>@string/encoding_cp932</item>
+        <item>@string/encoding_cp936</item>
+        <item>@string/encoding_cp1252</item>
+        <item>@string/encoding_cp949</item>
+        <item>@string/encoding_utf8</item>
+    </string-array>
+</resources>

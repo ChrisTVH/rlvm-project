@@ -34,6 +34,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 #include "libreallive/defs.h"
 #include "libreallive/gameexe.h"
 #include "machine/rlmachine.h"
@@ -197,6 +201,9 @@ void TextWindow::SetTextboxPadding(const vector<int>& pos_data) {
 
 void TextWindow::SetName(const std::string& utf8name,
                          const std::string& next_char) {
+#ifdef __ANDROID__
+  __android_log_print(ANDROID_LOG_INFO, "RLVM", "TextWindow::SetName: utf8name='%s', name_mod=%d", utf8name.c_str(), name_mod_);
+#endif
   if (name_mod_ == 0) {
     std::string interpreted_name = text_system_.InterpretName(utf8name);
 
@@ -263,8 +270,11 @@ Size TextWindow::GetTextWindowSize() const {
 
 Size TextWindow::GetTextSurfaceSize() const {
   // There is one extra character in each line to accommodate squeezed
-  // punctuation.
-  return GetTextWindowSize() + Size(default_font_size_in_pixels_, 0);
+  // punctuation. The height also includes ~25% of the font size as descent
+  // padding so that descenders (g, p, q, y) on the last line are not clipped.
+  int descent_padding = std::max(4, default_font_size_in_pixels_ / 4);
+  return GetTextWindowSize() +
+         Size(default_font_size_in_pixels_, descent_padding);
 }
 
 Rect TextWindow::GetWindowRect() const {
@@ -558,26 +568,14 @@ bool TextWindow::DisplayCharacter(const std::string& current,
     next_char_italic_ = false;
     text_wrapping_point_x_ += GetWrappingWidthFor(cur_codepoint);
 
-    if (cur_codepoint < 127) {
-      // This is a basic ASCII character. In normal RealLive, western text
-      // appears to be treated as half width monospace. If we're here, we are
-      // either in a manually laid out western game (therefore we should try to
-      // fit onto the monospace grid) or we're in rlbabel (in which case, our
-      // insertion point will be manually set by the bytecode immediately after
-      // this character).
-      if (text_system_.FontIsMonospaced()) {
-        // If our font is monospaced (ie msgothic.ttc), we want to follow the
-        // game's layout instructions perfectly.
-        text_insertion_point_x_ += GetWrappingWidthFor(cur_codepoint);
-      } else {
-        // If out font has different widths for 'i' and 'm', we aren't using
-        // the recommended font so we'll try laying out the text so that
-        // kerning looks better. This is the common case.
-        text_insertion_point_x_ +=
-            text_system_.GetCharWidth(font_size_in_pixels(), cur_codepoint);
-      }
+    if (cur_codepoint < 0x300) {
+      // All western characters (ASCII + Latin Extended): use the real TTF
+      // advance width, which matches GetWrappingWidthFor. For rlBabel games
+      // the bytecode will override text_insertion_point_x_ via TextPosX(xmod)
+      // immediately after, so this only matters for non-rlBabel paths.
+      text_insertion_point_x_ += GetWrappingWidthFor(cur_codepoint);
     } else {
-      // Move the insertion point forward one character
+      // Move the insertion point forward one character (fullwidth CJK)
       text_insertion_point_x_ += font_size_in_pixels_ + x_spacing_;
     }
 
@@ -764,9 +762,23 @@ void TextWindow::EndSelectionMode() {
 }
 
 int TextWindow::GetWrappingWidthFor(int cur_codepoint) {
-  if (cur_codepoint < 127) {
-    return std::floor((font_size_in_pixels_ + x_spacing_) / 2.0f);
+  if (cur_codepoint < 0x20) {
+    // Control characters: no width
+    return 0;
+  } else if (cur_codepoint < 0x300) {
+    // All western characters — Basic ASCII and Latin Extended (á, é, í, ó,
+    // ú, ñ, ¿, ¡, É, À, etc.) — use the real TTF advance width.
+    //
+    // For rlBabel games the bytecode resets text_insertion_point_x_ via
+    // TextPosX(xmod) after every character anyway, so using the real advance
+    // here only affects text_wrapping_point_x_ (word-wrap decisions).
+    // This prevents MustLineBreak from cutting lines too early, which was
+    // causing the unused space on the right side of the text box, and also
+    // fixes the excess spacing after narrow glyphs like comma, period, and
+    // apostrophe.
+    return text_system_.GetCharWidth(font_size_in_pixels(), cur_codepoint);
   } else {
+    // CJK and other fullwidth characters
     return font_size_in_pixels_ + x_spacing_;
   }
 }

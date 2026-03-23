@@ -42,6 +42,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 #include "libreallive/expression.h"
 #include "libreallive/scenario.h"
 
@@ -316,10 +320,35 @@ TextoutElement::TextoutElement(const char* src, const char* file_end) {
           *end == entrypoint_marker)
         break;
     }
-    if ((*end >= 0x81 && *end <= 0x9f) || (*end >= 0xe0 && *end <= 0xef))
+    // Detect CP932 (0x81-0x9F, 0xE0-0xEF) or UTF-8 lead bytes
+    // UTF-8: 0xC0-0xDF (2 bytes), 0xE0-0xEF (3 bytes), 0xF0-0xF7 (4 bytes)
+    unsigned char c = static_cast<unsigned char>(*end);
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO, "RLVM", "TextoutElement: byte=0x%02x", c);
+#endif
+    if (c >= 0x81 && c <= 0x9f) {
+      // CP932 lead byte only (UTF-8 doesn't use this range)
       end += 2;
-    else
+    } else if (c >= 0xe0 && c <= 0xef) {
+      // Ambiguous: could be CP932 or UTF-8
+      // Check next byte: UTF-8 continuation bytes are 0x80-0xBF
+      unsigned char next = static_cast<unsigned char>(end[1]);
+      if (next >= 0x80 && next <= 0xBF) {
+        // UTF-8: 3-byte character
+        end += 3;
+      } else {
+        // CP932: 2-byte character
+        end += 2;
+      }
+    } else if (c >= 0xf0 && c <= 0xf7) {
+      // UTF-8: 4-byte character
+      end += 4;
+    } else if (c >= 0xc0 && c <= 0xdf) {
+      // UTF-8: 2-byte character
+      end += 2;
+    } else {
       ++end;
+    }
   }
   repr.assign(src, end);
 }
@@ -343,9 +372,38 @@ const string TextoutElement::GetText() const {
         rv.push_back('\\');
       }
     } else {
-      if ((*it >= 0x81 && *it <= 0x9f) || (*it >= 0xe0 && *it <= 0xef))
+      // Detect CP932 or UTF-8 lead bytes
+      unsigned char c = static_cast<unsigned char>(*it);
+      if (c >= 0x81 && c <= 0x9f) {
+        // CP932 lead byte only (UTF-8 doesn't use this range)
         rv.push_back(*it++);
-      rv.push_back(*it++);
+        rv.push_back(*it++);
+      } else if (c >= 0xe0 && c <= 0xef) {
+        // Ambiguous: could be CP932 or UTF-8
+        unsigned char next = static_cast<unsigned char>(it[1]);
+        if (next >= 0x80 && next <= 0xBF) {
+          // UTF-8: 3-byte character
+          rv.push_back(*it++);
+          rv.push_back(*it++);
+          rv.push_back(*it++);
+        } else {
+          // CP932: 2-byte character
+          rv.push_back(*it++);
+          rv.push_back(*it++);
+        }
+      } else if (c >= 0xf0 && c <= 0xf7) {
+        // UTF-8: 4-byte character
+        rv.push_back(*it++);
+        rv.push_back(*it++);
+        rv.push_back(*it++);
+        rv.push_back(*it++);
+      } else if (c >= 0xc0 && c <= 0xdf) {
+        // UTF-8: 2-byte character
+        rv.push_back(*it++);
+        rv.push_back(*it++);
+      } else {
+        rv.push_back(*it++);
+      }
     }
   }
   return rv;

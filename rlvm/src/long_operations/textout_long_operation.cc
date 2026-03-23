@@ -29,6 +29,15 @@
 
 #include <algorithm>
 #include <string>
+#include <iostream>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#define LOG_TAG "RLVM"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#else
+#define LOGI(...) fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
+#endif
 
 #include "long_operations/pause_long_operation.h"
 #include "machine/rlmachine.h"
@@ -57,14 +66,24 @@ TextoutLongOperation::TextoutLongOperation(RLMachine& machine,
       current_codepoint_(0),
       current_position_(utf8_string_.begin()),
       no_wait_(false) {
+  LOGI("TextoutLongOperation: utf8_string_.size()=%zu", utf8_string_.size());
+  
   // Retrieve the first character (prime the loop in operator())
   string::iterator tmp = current_position_;
   if (tmp == utf8_string_.end()) {
     current_char_ = "";
   } else {
-    current_codepoint_ = utf8::next(tmp, utf8_string_.end());
+    // Try to decode with utf8::next, but handle errors gracefully
+    try {
+      current_codepoint_ = utf8::next(tmp, utf8_string_.end());
+    } catch (...) {
+      // If decoding fails, use the raw byte as codepoint
+      current_codepoint_ = static_cast<unsigned char>(*current_position_);
+      tmp = current_position_ + 1;
+    }
     current_char_ = string(current_position_, tmp);
     current_position_ = tmp;
+    LOGI("TextoutLongOperation: first codepoint=0x%x, current_char_.size()=%zu", current_codepoint_, current_char_.size());
   }
 
   // If we are inside a ruby gloss right now, don't delay at
@@ -113,6 +132,10 @@ bool TextoutLongOperation::DisplayName(RLMachine& machine) {
   string::iterator curend = it;
   string::iterator strend = utf8_string_.end();
   int codepoint = utf8::next(it, strend);
+
+#ifdef __ANDROID__
+  __android_log_print(ANDROID_LOG_INFO, "RLVM", "DisplayName: start codepoint=0x%x", codepoint);
+#endif
 
   // Eat all characters between the name brackets
   while (codepoint != 0x3011 && it != strend) {

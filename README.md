@@ -49,7 +49,7 @@ rlvm/
 ├── src/
 │   ├── base/           # System base components
 │   ├── effects/        # Visual effects
-│   ├── encodings/      # Character encoding (CP932, CP936, CP949)
+│   ├── encodings/      # Character encoding (CP932, CP936, CP949, UTF-8)
 │   ├── libreallive/    # Library for reading RealLive engine files
 │   ├── long_operations/ # Long duration operations
 │   ├── machine/        # Virtual machine and bytecode execution
@@ -132,28 +132,44 @@ rlvm-r/
 
 ### Building
 
-1. **Install dependencies**:
-   ```bash
-   # Make sure Android SDK and NDK are installed
-   # Optional: install cmake, make, etc.
-   ```
+The build process has two stages:
 
-2. **Build native libraries**:
-   ```bash
-   cd rlvm-r
-   ./scripts/build.sh --arch arm      # For ARM 32-bit
-   ./scripts/build.sh --arch arm64    # For ARM 64-bit
-   ```
+#### Stage 1: Build Native Libraries (C++ engine)
 
-3. **Build Android application**:
-   ```bash
-   ./gradlew assembleDebug
-   ```
+```bash
+cd rlvm-r
 
-4. **Install on device**:
-   ```bash
-   ./gradlew installDebug
-   ```
+# Build for ARM 64-bit (most modern devices)
+./scripts/build.sh --arch arm64 2>&1 | tee build.log
+
+# Build for ARM 32-bit (older devices)
+./scripts/build.sh --arch arm 2>&1 | tee build.log
+
+# Or build both architectures
+./scripts/build.sh --arch arm64 2>&1 | tee build.log
+./scripts/build.sh --arch arm 2>&1 | tee build.log
+```
+
+This compiles:
+- SDL2 and dependencies (Boost, Ogg, Vorbis, etc.)
+- The rlvm engine (libgame.so)
+- Outputs to `app/src/main/jniLibs/{arch}/`
+
+#### Stage 2: Build Android Application
+
+```bash
+cd rlvm-r
+
+# Build debug APK (via command line)
+./gradlew assembleDebug
+
+# Build and install on connected device
+./gradlew installDebug
+
+# Or use Android Studio:
+# - Open project in Android Studio
+# - Run > Run 'app'
+```
 
 ### Build Options
 
@@ -164,6 +180,17 @@ rlvm-r/
 #   --debug: Debug build with symbols
 #   --release: Optimized build (default)
 #   --asan: Enable AddressSanitizer
+```
+
+### Cleaning
+
+```bash
+# Clean native libraries only (faster)
+rm -rf scripts/build/arm64/rlvm-prefix
+rm -rf scripts/build/arm/rlvm-prefix
+
+# Clean everything
+./scripts/clean.sh
 ```
 
 ## Relationship between rlvm/ and rlvm-r/
@@ -241,3 +268,9 @@ Contributions are welcome. Please ensure to follow the existing code style and t
 ### Repositories that laid the foundations for the Android port
 - **xyzz/rlvm**: https://github.com/xyzz/rlvm
 - **xyzz/rlvm-android**: https://github.com/xyzz/rlvm-android
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute, including the TO-DO list and completed tasks.

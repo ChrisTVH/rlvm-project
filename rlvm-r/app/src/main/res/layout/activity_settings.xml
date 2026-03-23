@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurface"
+    android:padding="@dimen/margin_large"
+    tools:context=".SettingsActivity">
+
+    <!-- Header -->
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_medium"
+        android:text="@string/settings_title"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="@dimen/text_title"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Encoding Section -->
+    <TextView
+        android:id="@+id/tv_encoding_section"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_extra_large"
+        android:text="@string/encoding_section_title"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="@dimen/text_subtitle"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tv_title" />
+
+    <TextView
+        android:id="@+id/tv_encoding_desc"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_small"
+        android:text="@string/encoding_description"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="@dimen/text_path"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tv_encoding_section" />
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/card_encoding"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_medium"
+        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tv_encoding_desc">
+
+        <RadioGroup
+            android:id="@+id/rg_encoding"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="@dimen/margin_medium">
+
+            <RadioButton
+                android:id="@+id/rb_encoding_auto"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_small"
+                android:buttonTint="?attr/colorPrimary"
+                android:checked="true"
+                android:text="@string/encoding_auto"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/rb_encoding_cp932"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_small"
+                android:buttonTint="?attr/colorPrimary"
+                android:text="@string/encoding_cp932"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/rb_encoding_cp936"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_small"
+                android:buttonTint="?attr/colorPrimary"
+                android:text="@string/encoding_cp936"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/rb_encoding_cp1252"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_small"
+                android:buttonTint="?attr/colorPrimary"
+                android:text="@string/encoding_cp1252"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/rb_encoding_cp949"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/margin_small"
+                android:buttonTint="?attr/colorPrimary"
+                android:text="@string/encoding_cp949"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/rb_encoding_utf8"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="?attr/colorPrimary"
+                android:text="@string/encoding_utf8"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+        </RadioGroup>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Fan translation notice -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/card_notice"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_large"
+        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/card_encoding"
+        app:strokeColor="?attr/colorPrimary"
+        app:strokeWidth="1dp">
+
+        <TextView
+            android:id="@+id/tv_notice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/encoding_notice"
+            android:drawablePadding="@dimen/margin_small"
+            android:padding="@dimen/margin_medium"
+            android:text="@string/encoding_notice"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="@dimen/text_path"
+            app:drawableStartCompat="@android:drawable/ic_dialog_info" />
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Save button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_save"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:minWidth="120dp"
+        android:minHeight="48dp"
+        android:text="@string/save_settings"
+        android:textColor="@color/on_primary"
+        app:backgroundTint="@color/primary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.497"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/card_notice" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

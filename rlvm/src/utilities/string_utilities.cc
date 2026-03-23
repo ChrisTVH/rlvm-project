@@ -29,6 +29,14 @@
 
 #include <string>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#define LOG_TAG "RLVM"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#else
+#define LOGI(...)
+#endif
+
 #include "encodings/codepage.h"
 #include "utf8cpp/utf8.h"
 #include "utilities/exception.h"
@@ -57,7 +65,16 @@ string TransformationName(int transformation) {
 
 string UnicodeToUTF8(const std::wstring& widestring) {
   string out;
-  utf8::utf16to8(widestring.begin(), widestring.end(), back_inserter(out));
+
+  LOGI("UnicodeToUTF8: widestring.size()=%zu", widestring.size());
+  if (widestring.size() > 0) {
+    LOGI("UnicodeToUTF8: first wchar_t=0x%lx", (unsigned long)widestring[0]);
+  }
+
+  // Use utf32to8 since wchar_t is 32-bit on Linux/Android
+  utf8::utf32to8(widestring.begin(), widestring.end(), back_inserter(out));
+
+  LOGI("UnicodeToUTF8: out.size()=%zu", out.size());
 
   return out;
 }
@@ -78,6 +95,15 @@ bool IsWrappingRomanCharacter(int codepoint) {
   if ((codepoint >= 'A' && codepoint <= 'Z') ||
       (codepoint >= 'a' && codepoint <= 'z') || codepoint == '\'' ||
       codepoint == '-') {
+    return true;
+  }
+
+  // Latin Extended: accented letters used in Spanish and other western
+  // languages (á, é, í, ó, ú, ñ, ü, Á, É, Í, Ó, Ú, Ñ, etc.)
+  // Include these so MustLineBreak's lookahead correctly accounts for words
+  // that start with an accented character.
+  if ((codepoint >= 0x00C0 && codepoint <= 0x00FF) ||
+      (codepoint >= 0x0100 && codepoint <= 0x02FF)) {
     return true;
   }
 
@@ -133,6 +159,90 @@ void CopyOneShiftJisCharacter(const char*& str, string& output) {
       output += *str++;
     }
   } else {
+    output += *str++;
+  }
+}
+
+void CopyOneUtf8Character(const char*& str, string& output) {
+  unsigned char lead = static_cast<unsigned char>(*str);
+
+  // rldev 2-byte prefix sequences: 0x89 followed by 0x80-0xC0.
+  // JisEncode() stores CP1252 chars in 0x80-0xBF range as (0x89, byte):
+  //   JisEncode(ch) = ch | 0x8900  for 0x80 <= ch <= 0xBF
+  //   JisEncode(0xFF) = 0x89C0
+  // Decode to Unicode via Cp1252 and emit as UTF-8.
+  if (lead == 0x89 && str[1] != '\0') {
+    unsigned char lo = static_cast<unsigned char>(str[1]);
+    if (lo >= 0x80 && lo <= 0xC0) {
+      // CP1252 byte is lo (for 0x80-0xBF) or 0xFF (for 0xC0)
+      unsigned char cp1252_byte = (lo == 0xC0) ? 0xFF : lo;
+      // Convert CP1252 to Unicode via Cp::instance(2)
+      uint16_t unicode = Cp::instance(2).Convert(cp1252_byte);
+      // Encode Unicode codepoint as UTF-8
+      if (unicode < 0x80) {
+        output += static_cast<char>(unicode);
+      } else if (unicode < 0x800) {
+        output += static_cast<char>(0xC0 | (unicode >> 6));
+        output += static_cast<char>(0x80 | (unicode & 0x3F));
+      } else {
+        output += static_cast<char>(0xE0 | (unicode >> 12));
+        output += static_cast<char>(0x80 | ((unicode >> 6) & 0x3F));
+        output += static_cast<char>(0x80 | (unicode & 0x3F));
+      }
+      str += 2;
+      return;
+    }
+  }
+
+  // Continuation byte (10xxxxxx): copy as a single raw byte.
+  // This can happen when the bytecode sends bytes one at a time.
+  if ((lead & 0xC0) == 0x80) {
+    output += *str++;
+    return;
+  }
+
+  int bytes = utf8_char_length(lead);
+
+  // For multi-byte sequences, validate that the required continuation bytes
+  // are actually present and correct (10xxxxxx pattern).
+  // If they are not — the lead byte is a JisEncoded CP1252 single-byte char
+  // (0xA1-0xDF, from JisEncode(cp1252_byte - 0x1F)) followed by an unrelated
+  // ASCII byte.  Decode it to its real CP1252 value and emit proper UTF-8 so
+  // that cp932_text_buffer holds real UTF-8.  This ensures DecodeUtf8() in
+  // TextoutGetChar returns the correct codepoint for xmod width calculations.
+  bool continuation_valid = true;
+  for (int i = 1; i < bytes; i++) {
+    if (str[i] == '\0' || (static_cast<unsigned char>(str[i]) & 0xC0) != 0x80) {
+      continuation_valid = false;
+      break;
+    }
+  }
+
+  if (!continuation_valid) {
+    if (lead >= 0xA1 && lead <= 0xDF) {
+      // JisEncoded CP1252 single byte: reverse JisEncode and emit real UTF-8.
+      unsigned char cp1252_byte = lead + 0x1F;
+      uint16_t unicode = Cp::instance(2).Convert(cp1252_byte);
+      if (unicode < 0x80) {
+        output += static_cast<char>(unicode);
+      } else if (unicode < 0x800) {
+        output += static_cast<char>(0xC0 | (unicode >> 6));
+        output += static_cast<char>(0x80 | (unicode & 0x3F));
+      } else {
+        output += static_cast<char>(0xE0 | (unicode >> 12));
+        output += static_cast<char>(0x80 | ((unicode >> 6) & 0x3F));
+        output += static_cast<char>(0x80 | (unicode & 0x3F));
+      }
+      str++;
+    } else {
+      // Other invalid lead: copy as single raw byte
+      output += *str++;
+    }
+    return;
+  }
+
+  // Valid sequence: copy all bytes
+  for (int i = 0; i < bytes && *str != '\0'; i++) {
     output += *str++;
   }
 }

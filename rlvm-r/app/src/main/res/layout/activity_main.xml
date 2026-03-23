@@ -8,10 +8,26 @@
     android:background="?attr/colorSurface"
     tools:context=".MainActivity">
 
+    <!-- Settings FAB - Top right (hidden until game is configured) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_settings"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="@dimen/margin_large"
+        android:contentDescription="@string/settings"
+        android:src="@android:drawable/ic_menu_preferences"
+        android:visibility="visible"
+        app:backgroundTint="@color/background"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/on_primary"
+        tools:visibility="visible" />
+
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/iv_logo"
         android:layout_width="@dimen/logo_size"
         android:layout_height="@dimen/logo_size"
+        android:layout_marginTop="@dimen/margin_extra_large"
         android:contentDescription="@string/app_name"
         android:src="@mipmap/ic_launcher"
         app:layout_constraintBottom_toTopOf="@+id/tv_title"
@@ -88,7 +104,7 @@
         style="@style/Widget.Material3.Button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/margin_medium"
+        android:layout_marginTop="@dimen/margin_small"
         android:minWidth="@dimen/button_launch_width"
         android:text="@string/pick_game_folder"
         app:layout_constraintBottom_toTopOf="@+id/tv_version"

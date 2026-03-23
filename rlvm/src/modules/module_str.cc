@@ -33,6 +33,10 @@
 #include <sstream>
 #include <string>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 #include "encodings/codepage.h"
 #include "encodings/han2zen.h"
 #include "encodings/western.h"
@@ -559,12 +563,14 @@ struct Str_strlpos : public RLStoreOpcode<StrConstant_T, StrConstant_T> {
 // Prints a string.
 struct Str_strout : public RLOpcode<StrConstant_T> {
   void operator()(RLMachine& machine, std::string value) {
-    // We collaborate with rlBabel here.
-    //
-    // This is the point right before we are about to switch from cp932 to
-    // unicode. If the character is supposed to be italic, the incoming values
-    // may have been munged to be valid cp932 character.
     int encoding = machine.GetTextEncoding();
+    
+    // For UTF-8, skip all CP932-specific processing
+    if (encoding == 4) {
+      machine.PerformTextout(value);
+      return;
+    }
+    
     size_t size = value.size();
     if (encoding != 0 && (size == 1 || size == 2)) {
       // Look at the first character in the

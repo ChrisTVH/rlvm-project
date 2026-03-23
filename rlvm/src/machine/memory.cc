@@ -31,6 +31,10 @@
 #include <map>
 #include <string>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 #include "libreallive/gameexe.h"
 #include "libreallive/intmemref.h"
 #include "machine/rlmachine.h"
@@ -85,6 +89,9 @@ void LocalMemory::reset() {
 // -----------------------------------------------------------------------
 Memory::Memory(RLMachine& machine, Gameexe& gameexe)
     : global_(new GlobalMemory), local_(), machine_(machine) {
+#ifdef __ANDROID__
+  __android_log_print(ANDROID_LOG_INFO, "RLVM", "Memory::Memory constructor called");
+#endif
   ConnectIntVarPointers();
 
   InitializeDefaultValues(gameexe);
@@ -242,14 +249,22 @@ int Memory::ConvertLetterIndexToInt(const std::string& value) {
 }
 
 void Memory::InitializeDefaultValues(Gameexe& gameexe) {
+#ifdef __ANDROID__
+  __android_log_print(ANDROID_LOG_INFO, "RLVM", "Memory::InitializeDefaultValues: starting");
+#endif
   // Note: We ignore the \#NAME_MAXLEN variable because manual allocation is
   // error prone and for losers.
   GameexeFilteringIterator end = gameexe.filtering_end();
   for (GameexeFilteringIterator it = gameexe.filtering_begin("NAME.");
        it != end; ++it) {
     try {
-      SetName(ConvertLetterIndexToInt(it->GetKeyParts().at(1)),
-              RemoveQuotes(it->ToString()));
+      std::string name = RemoveQuotes(it->ToString());
+      int index = ConvertLetterIndexToInt(it->GetKeyParts().at(1));
+      SetName(index, name);
+#ifdef __ANDROID__
+      __android_log_print(ANDROID_LOG_INFO, "RLVM", "Memory: NAME.%c = '%s' (index=%d)",
+                          it->GetKeyParts().at(1).c_str(), name.c_str(), index);
+#endif
     } catch (...) {
       std::cerr << "WARNING: Invalid format for key " << it->key() << std::endl;
     }
