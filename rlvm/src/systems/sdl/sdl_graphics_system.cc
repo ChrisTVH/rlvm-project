@@ -119,6 +119,17 @@ void SDLGraphicsSystem::CalculateViewport(int window_width, int window_height) {
   // Log the calculated aspect ratios
   SDL_Log("Aspects: game=%.2f, window=%.2f, diff=%.2f", game_aspect,
           window_aspect, window_aspect - game_aspect);
+
+  // Keep Texture's static viewport offset in sync so that
+  // glCopyTexSubImage2D in the render_to_texture constructor reads
+  // from the correct location in the framebuffer (not from (0,0)
+  // which is the letterbox/pillarbox region when aspect-ratio bars
+  // are present).
+  Texture::SetViewportOffset(viewport_x_, viewport_y_);
+
+  // Also sync the viewport pixel dimensions so the capture reads the
+  // full scaled image rather than the smaller game-coordinate rectangle.
+  Texture::SetViewportSize(viewport_width_, viewport_height_);
 }
 
 Point SDLGraphicsSystem::WindowToGameCoords(int window_x, int window_y) {
@@ -214,8 +225,9 @@ void SDLGraphicsSystem::EndFrame() {
     // and I've just been lucky that the Intel i810 and whatever my Mac machine
     // has have been doing things that way.)
     glBindTexture(GL_TEXTURE_2D, screen_contents_texture_);
-    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, screen_size().width(),
-                        screen_size().height());
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        viewport_x_, viewport_y_,
+                        screen_size().width(), screen_size().height());
     screen_contents_texture_valid_ = true;
   } else
 #endif

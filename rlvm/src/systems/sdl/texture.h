@@ -48,6 +48,14 @@ class Texture {
  public:
   static void SetScreenSize(const Size& s);
 
+  // Set the viewport offset so that glCopyTexSubImage2D reads from the correct
+  // position when letterboxing or pillarboxing is active.
+  static void SetViewportOffset(int x, int y);
+
+  // Set the viewport pixel dimensions so that glCopyTexSubImage2D captures the
+  // full scaled viewport rather than the smaller game-coordinate rectangle.
+  static void SetViewportSize(int w, int h);
+
   static int ScreenHeight();
 
  public:
@@ -145,6 +153,23 @@ class Texture {
   // Size of the screen. Used during color mask calculations.
   static unsigned int s_screen_width;
   static unsigned int s_screen_height;
+
+  // Viewport offset in OpenGL window coordinates (y=0 at bottom).
+  // Used to correctly capture the game image when letterboxing/pillarboxing
+  // is active. Set by SDLGraphicsSystem::CalculateViewport.
+  static int s_viewport_x;
+  static int s_viewport_y;
+
+  // Viewport pixel dimensions in window coordinates. Used alongside
+  // s_viewport_x/y to capture the correct number of pixels from the
+  // framebuffer. Zero means "use logical size" (no scaling active).
+  static int s_viewport_width;
+  static int s_viewport_height;
+
+  // UV scale factors applied in RenderToScreen for is_upside_down_ textures.
+  // = viewport_w / logical_w (and _y equivalent). 1.0 when no scaling active.
+  static float s_capture_scale_x;
+  static float s_capture_scale_y;
 
   // The size of s_upload_buffer. Initialized to 0.
   static unsigned int s_upload_buffer_size;

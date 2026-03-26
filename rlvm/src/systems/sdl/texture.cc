@@ -57,6 +57,12 @@
 
 unsigned int Texture::s_screen_width = 0;
 unsigned int Texture::s_screen_height = 0;
+int Texture::s_viewport_x = 0;
+int Texture::s_viewport_y = 0;
+int Texture::s_viewport_width = 0;
+int Texture::s_viewport_height = 0;
+float Texture::s_capture_scale_x = 1.0f;
+float Texture::s_capture_scale_y = 1.0f;
 
 unsigned int Texture::s_upload_buffer_size = 0;
 std::unique_ptr<char[]> Texture::s_upload_buffer;
@@ -66,6 +72,16 @@ std::unique_ptr<char[]> Texture::s_upload_buffer;
 void Texture::SetScreenSize(const Size& s) {
   s_screen_width = s.width();
   s_screen_height = s.height();
+}
+
+void Texture::SetViewportOffset(int x, int y) {
+  s_viewport_x = x;
+  s_viewport_y = y;
+}
+
+void Texture::SetViewportSize(int w, int h) {
+  s_viewport_width = w;
+  s_viewport_height = h;
 }
 
 int Texture::ScreenHeight() { return s_screen_height; }
@@ -162,16 +178,39 @@ Texture::Texture(render_to_texture, int width, int height)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-  texture_width_ = SafeSize(logical_width_);
+  // Allocate the texture at game resolution (logical_width_ x logical_height_).
+  // The viewport may be larger (pillarbox / letterbox scaling), but we track
+  // the scale ratio and apply it in RenderToScreen so UV coords always map
+  // game coordinates to the correct portion of the captured framebuffer.
+  texture_width_  = SafeSize(logical_width_);
   texture_height_ = SafeSize(logical_height_);
 
-  // This may fail.
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture_width_, texture_height_, 0,
+  // Store the UV scale factors so RenderToScreen can remap game coords to
+  // the actual number of captured pixels in each dimension.
+  // When no viewport scaling is active (s_viewport_width == 0), scale = 1.0.
+  s_capture_scale_x = (s_viewport_width  > 0)
+      ? float(s_viewport_width)  / float(logical_width_)  : 1.0f;
+  s_capture_scale_y = (s_viewport_height > 0)
+      ? float(s_viewport_height) / float(logical_height_) : 1.0f;
+
+  // Allocate texture storage at VIEWPORT size so we have enough texels.
+  int tex_w = (s_viewport_width  > 0) ? SafeSize(s_viewport_width)  : texture_width_;
+  int tex_h = (s_viewport_height > 0) ? SafeSize(s_viewport_height) : texture_height_;
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0,
                GL_RGB, GL_UNSIGNED_BYTE, NULL);
   DebugShowGLErrors();
 
-  glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, logical_width_,
-                      logical_height_);
+  // Record the actual texture sizes used for UV division.
+  texture_width_  = tex_w;
+  texture_height_ = tex_h;
+
+  // Copy from (viewport_x, viewport_y) so we skip the letterbox/pillarbox
+  // bars and grab exactly the game content at full viewport resolution.
+  int capture_w = (s_viewport_width  > 0) ? s_viewport_width  : logical_width_;
+  int capture_h = (s_viewport_height > 0) ? s_viewport_height : logical_height_;
+  glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                      s_viewport_x, s_viewport_y,
+                      capture_w, capture_h);
   DebugShowGLErrors();
 }
 
@@ -281,8 +320,16 @@ void Texture::RenderToScreen(const Rect& src, const Rect& dst, int opacity) {
   float thisy2 = float(y2) / texture_height_;
 
   if (is_upside_down_) {
-    thisy1 = float(logical_height_ - y1) / texture_height_;
-    thisy2 = float(logical_height_ - y2) / texture_height_;
+    // This texture was captured from the framebuffer via glCopyTexSubImage2D.
+    // The framebuffer content is scaled by glViewport, so the captured pixel
+    // count is s_capture_scale_x times the logical (game-coord) width.
+    // We must multiply game coords by that scale before dividing by texture
+    // size, so that game coord logical_width_ maps to UV = captured_w/tex_w
+    // (i.e. the full captured image) rather than only a fraction of it.
+    thisx1 = float(x1) * s_capture_scale_x / texture_width_;
+    thisx2 = float(x2) * s_capture_scale_x / texture_width_;
+    thisy1 = float(logical_height_ - y1) * s_capture_scale_y / texture_height_;
+    thisy2 = float(logical_height_ - y2) * s_capture_scale_y / texture_height_;
   }
 
   glBindTexture(GL_TEXTURE_2D, texture_id_);
