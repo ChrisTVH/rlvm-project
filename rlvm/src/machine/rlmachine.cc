@@ -629,55 +629,12 @@ void RLMachine::PerformTextout(const std::string& cp932str) {
 
   std::string utf8str;
   if (GetTextEncoding() == 4) {
-    // UTF-8 mode: The bytecode contains MIXED encoding:
-    // - Characters like 【 are in CP932 (0x81 0x79)
-    // - Characters like í are already in UTF-8 (0xC3 0xAD)
-    // - Bytes arrive one at a time from strout
-    // We need an accumulator to handle CP932 two-byte sequences.
-    
-    // Static accumulator for CP932 lead bytes
-    static unsigned char cp932_lead = 0;
-    
-    unsigned char c = static_cast<unsigned char>(name_parsed_text[0]);
-    
-    if (cp932_lead != 0) {
-      // We have a pending CP932 lead byte, this is the trail byte
-      unsigned char c2 = c;
-      if (c2 >= 0x40 && c2 <= 0xFC && c2 != 0x7F) {
-        // Valid CP932 two-byte sequence: convert to UTF-8
-        uint16_t cp932_char = (cp932_lead << 8) | c2;
-        Codepage& cp = Cp::instance(0);  // Use CP932 codec
-        uint16_t unicode = cp.JisDecode(cp932_char);
-        uint16_t codepoint = cp.Convert(unicode);
-        
-        // Encode as UTF-8
-        if (codepoint < 0x80) {
-          utf8str += static_cast<char>(codepoint);
-        } else if (codepoint < 0x800) {
-          utf8str += static_cast<char>(0xC0 | (codepoint >> 6));
-          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
-        } else {
-          utf8str += static_cast<char>(0xE0 | (codepoint >> 12));
-          utf8str += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-          utf8str += static_cast<char>(0x80 | (codepoint & 0x3F));
-        }
-      }
-      cp932_lead = 0;  // Clear accumulator
-    } else if (c >= 0x81 && c <= 0x9F) {
-      // CP932 lead byte: save and wait for trail byte
-      // But DON'T return - just skip this byte, the trail byte will be processed next
-      cp932_lead = c;
-      // Don't set utf8str - we'll wait for the trail byte
-    } else if ((c & 0xE0) == 0xC0 || (c & 0xF0) == 0xE0 || (c & 0xF8) == 0xF0) {
-      // UTF-8 multi-byte: pass through (already valid UTF-8)
-      utf8str = name_parsed_text;
-    } else if (c < 0x80) {
-      // ASCII: pass through
-      utf8str = name_parsed_text;
-    } else {
-      // Unknown byte: pass through (might be katakana, etc.)
-      utf8str = name_parsed_text;
-    }
+    // UTF-8 mode: name markers have already been expanded by parseNames.
+    // Pass the text through as-is; the accumulator section below handles
+    // single-byte JisEncoded CP1252 characters (from TextoutElement) and
+    // assembles multi-byte UTF-8 sequences one byte at a time.
+    // Complete strings arriving via strout are forwarded whole.
+    utf8str = name_parsed_text;
   } else {
     // Other encodings: convert to UTF-8
     utf8str = cp932toUTF8(name_parsed_text, GetTextEncoding());

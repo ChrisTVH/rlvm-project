@@ -195,9 +195,10 @@ int RlBabelDLL::TextoutAdd(const std::string& str) {
   int encoding = machine_.GetTextEncoding();
 
   while (*string) {
-    // For UTF-8, skip CP932 name patterns (they don't apply)
-    if (encoding != 4 &&
-        string[0] == 0x81 && (string[1] == 0x93 || string[1] == 0x96) &&
+    // CP932 name-reference patterns (0x81 0x96/0x93 + fullwidth index) are
+    // always emitted by the game engine regardless of translation encoding.
+    // 0x81 cannot appear in valid UTF-8, so this check is safe in all modes.
+    if (string[0] == 0x81 && (string[1] == 0x93 || string[1] == 0x96) &&
         string[2] == 0x82 && (string[3] >= 0x60 && string[3] <= 0x79)) {
       // Name reference: expand it.
       bool global = string[1] == 0x96;

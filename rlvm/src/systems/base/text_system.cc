@@ -860,12 +860,13 @@ void parseNames(const Memory& memory,
   const char LOWER_BYTE_FULLWIDTH_PERCENT = 0x93;
 
   while (*cur) {
-    // The name-reference pattern (0x81 0x96/0x93 ...) is a CP932 construct.
-    // In UTF-8 mode (encoding=4) these byte values have entirely different
-    // meanings, so skip this branch entirely to avoid misinterpreting UTF-8
-    // continuation bytes or fragments of multi-byte characters.
-    if (encoding != 4 &&
-        cur[0] == 0x81 && (cur[1] == LOWER_BYTE_FULLWIDTH_ASTERISK ||
+    // The name-reference pattern (0x81 0x96/0x93 ...) is a CP932 construct
+    // embedded by the game engine to mark name-insertion points. These bytes
+    // are always CP932 regardless of the translation encoding: 0x81 is a
+    // CP932 lead byte and cannot appear as a UTF-8 continuation byte (those
+    // are 0x80-0xBF only in positions 2+), so detecting them here is safe
+    // even in UTF-8 mode (encoding=4).
+    if (cur[0] == 0x81 && (cur[1] == LOWER_BYTE_FULLWIDTH_ASTERISK ||
                            cur[1] == LOWER_BYTE_FULLWIDTH_PERCENT)) {
       char type = cur[1];
       cur += 2;
