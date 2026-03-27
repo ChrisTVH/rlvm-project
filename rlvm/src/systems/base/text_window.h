@@ -175,11 +175,18 @@ class TextWindow {
   int insertion_point_y() const { return text_insertion_point_y_; }
   void offset_insertion_point_x(int offset) {
     text_insertion_point_x_ += offset;
+    // Keep wrapping tracker in sync: rlBabel sets insertion point directly
+    // after each char, so without this MustLineBreak fires prematurely.
+    text_wrapping_point_x_ += offset;
   }
   void offset_insertion_point_y(int offset) {
     text_insertion_point_y_ += offset;
   }
-  void set_insertion_point_x(int x) { text_insertion_point_x_ = x; }
+  void set_insertion_point_x(int x) {
+    text_insertion_point_x_ = x;
+    // Sync wrapping tracker so MustLineBreak uses the real cursor position.
+    text_wrapping_point_x_ = x;
+  }
   void set_insertion_point_y(int y) { text_insertion_point_y_ = y; }
 
   int line_height() const {

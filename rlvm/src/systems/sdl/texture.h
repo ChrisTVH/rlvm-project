@@ -166,6 +166,11 @@ class Texture {
   static int s_viewport_width;
   static int s_viewport_height;
 
+  // Full window pixel dimensions (not the game/viewport size).
+  // Used to convert game-coordinate Y values to OpenGL bottom-up window Y.
+  static int s_window_width;
+  static int s_window_height;
+
   // UV scale factors applied in RenderToScreen for is_upside_down_ textures.
   // = viewport_w / logical_w (and _y equivalent). 1.0 when no scaling active.
   static float s_capture_scale_x;

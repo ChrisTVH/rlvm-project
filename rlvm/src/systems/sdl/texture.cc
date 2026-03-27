@@ -61,6 +61,8 @@ int Texture::s_viewport_x = 0;
 int Texture::s_viewport_y = 0;
 int Texture::s_viewport_width = 0;
 int Texture::s_viewport_height = 0;
+int Texture::s_window_width = 0;
+int Texture::s_window_height = 0;
 float Texture::s_capture_scale_x = 1.0f;
 float Texture::s_capture_scale_y = 1.0f;
 
@@ -82,6 +84,9 @@ void Texture::SetViewportOffset(int x, int y) {
 void Texture::SetViewportSize(int w, int h) {
   s_viewport_width = w;
   s_viewport_height = h;
+  // Derive full window dimensions from viewport + offset (letterbox/pillarbox).
+  s_window_width = w + 2 * s_viewport_x;
+  s_window_height = h + 2 * s_viewport_y;
 }
 
 int Texture::ScreenHeight() { return s_screen_height; }
@@ -110,10 +115,15 @@ Texture::Texture(SDL_Surface* surface,
   glGenTextures(1, &texture_id_);
   glBindTexture(GL_TEXTURE_2D, texture_id_);
   DebugShowGLErrors();
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  // Use GL_NEAREST for mask textures (GL_ALPHA) to avoid semi-transparent
+  // fringing where alpha transitions from 255 (inside) to 0 (padding area).
+  // Use GL_LINEAR for normal textures so they scale smoothly on large
+  // viewports.
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                  (byte_order == GL_ALPHA) ? GL_NEAREST : GL_LINEAR);
 
   if (w == total_width_ && h == total_height_) {
     SDL_LockSurface(surface);
@@ -173,43 +183,46 @@ Texture::Texture(render_to_texture, int width, int height)
   glGenTextures(1, &texture_id_);
   glBindTexture(GL_TEXTURE_2D, texture_id_);
   DebugShowGLErrors();
-  //  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  //  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
   // Allocate the texture at game resolution (logical_width_ x logical_height_).
   // The viewport may be larger (pillarbox / letterbox scaling), but we track
   // the scale ratio and apply it in RenderToScreen so UV coords always map
   // game coordinates to the correct portion of the captured framebuffer.
-  texture_width_  = SafeSize(logical_width_);
+  texture_width_ = SafeSize(logical_width_);
   texture_height_ = SafeSize(logical_height_);
 
   // Store the UV scale factors so RenderToScreen can remap game coords to
   // the actual number of captured pixels in each dimension.
   // When no viewport scaling is active (s_viewport_width == 0), scale = 1.0.
-  s_capture_scale_x = (s_viewport_width  > 0)
-      ? float(s_viewport_width)  / float(logical_width_)  : 1.0f;
+  s_capture_scale_x = (s_viewport_width > 0)
+                          ? float(s_viewport_width) / float(logical_width_)
+                          : 1.0f;
   s_capture_scale_y = (s_viewport_height > 0)
-      ? float(s_viewport_height) / float(logical_height_) : 1.0f;
+                          ? float(s_viewport_height) / float(logical_height_)
+                          : 1.0f;
 
   // Allocate texture storage at VIEWPORT size so we have enough texels.
-  int tex_w = (s_viewport_width  > 0) ? SafeSize(s_viewport_width)  : texture_width_;
-  int tex_h = (s_viewport_height > 0) ? SafeSize(s_viewport_height) : texture_height_;
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0,
-               GL_RGB, GL_UNSIGNED_BYTE, NULL);
+  int tex_w =
+      (s_viewport_width > 0) ? SafeSize(s_viewport_width) : texture_width_;
+  int tex_h =
+      (s_viewport_height > 0) ? SafeSize(s_viewport_height) : texture_height_;
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGB,
+               GL_UNSIGNED_BYTE, NULL);
   DebugShowGLErrors();
 
   // Record the actual texture sizes used for UV division.
-  texture_width_  = tex_w;
+  texture_width_ = tex_w;
   texture_height_ = tex_h;
 
   // Copy from (viewport_x, viewport_y) so we skip the letterbox/pillarbox
   // bars and grab exactly the game content at full viewport resolution.
-  int capture_w = (s_viewport_width  > 0) ? s_viewport_width  : logical_width_;
+  int capture_w = (s_viewport_width > 0) ? s_viewport_width : logical_width_;
   int capture_h = (s_viewport_height > 0) ? s_viewport_height : logical_height_;
-  glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                      s_viewport_x, s_viewport_y,
+  glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s_viewport_x, s_viewport_y,
                       capture_w, capture_h);
   DebugShowGLErrors();
 }
@@ -405,7 +418,7 @@ void Texture::render_to_screen_as_colour_mask_subtractive_glsl(
     glGenTextures(1, &back_texture_id_);
     glBindTexture(GL_TEXTURE_2D, back_texture_id_);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     // Generate this texture
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture_width_, texture_height_, 0,
@@ -413,13 +426,43 @@ void Texture::render_to_screen_as_colour_mask_subtractive_glsl(
     DebugShowGLErrors();
   }
 
-  // Copy the current value of the region where we're going to render
-  // to a texture for input to the shader
+  // Copy the screen region behind the text box into back_texture so the
+  // shader can blend it with the colour mask.
+  //
+  // The game uses logical (game-coordinate) positions (fdx1, fdy1..fdy2).
+  // The framebuffer contains WINDOW pixels.  We must map game coords →
+  // window coords before calling glCopyTexSubImage2D, which reads raw
+  // framebuffer pixels.
+  //
+  //   scale_x = viewport_width  / game_width
+  //   scale_y = viewport_height / game_height
+  //   fb_x    = viewport_x + fdx1 * scale_x
+  //   fb_y    = viewport_y + (game_height - fdy2) * scale_y   (GL Y=0 at
+  //   bottom)
   glBindTexture(GL_TEXTURE_2D, back_texture_id_);
-  int ystart = int(s_screen_height - fdy1 - (fdy2 - fdy1));
-  int idx1 = int(fdx1);
-  glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, idx1, ystart, texture_width_,
-                      texture_height_);
+  {
+    float scale_x = (s_viewport_width > 0)
+                        ? float(s_viewport_width) / float(s_screen_width)
+                        : 1.0f;
+    float scale_y = (s_viewport_height > 0)
+                        ? float(s_viewport_height) / float(s_screen_height)
+                        : 1.0f;
+
+    int fb_x = s_viewport_x + int(fdx1 * scale_x);
+    int fb_y = s_viewport_y + int((s_screen_height - fdy2) * scale_y);
+
+    // Capture at viewport scale so we get the full-resolution pixels.
+    int cap_w = int(texture_width_ * scale_x);
+    int cap_h = int(texture_height_ * scale_y);
+
+    // Ensure back_texture is large enough for the scaled capture.
+    if (cap_w > int(texture_width_) || cap_h > int(texture_height_)) {
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SafeSize(cap_w), SafeSize(cap_h),
+                   0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    }
+
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_x, fb_y, cap_w, cap_h);
+  }
   DebugShowGLErrors();
 
   glUseProgramObjectARB(Shaders::getColorMaskProgram());
@@ -494,7 +537,7 @@ void Texture::render_to_screen_as_colour_mask_subtractive_fallback(
     thisy2 = float(logical_height_ - y2) / texture_height_;
   }
 
-  // First draw the mask
+  // First draw the mask TODO
   glBindTexture(GL_TEXTURE_2D, texture_id_);
 
   /// SERIOUS WTF: gl_blend_func_separate causes a segmentation fault
