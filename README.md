@@ -8,8 +8,16 @@
 rlvm-project/
 ├── LICENSE.md          # GPLv3 License
 ├── README.md           # You are here
+├── CONTRIBUTING.md     # How to contribute + TO-DO
 ├── rlvm/               # Main emulator (C++)
+│   ├── src/            # Source code
+│   ├── vendor/         # Third-party libraries
+│   ├── scripts/        # Build scripts
+│   └── test/           # Unit tests
 └── rlvm-r/             # Android port (Kotlin/Gradle)
+    ├── app/            # Android application
+    ├── scripts/        # Native build scripts
+    └── gradle/         # Gradle wrapper
 ```
 
 ## rlvm/ - Main Emulator

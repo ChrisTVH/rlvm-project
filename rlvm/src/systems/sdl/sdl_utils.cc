@@ -25,19 +25,22 @@
 //
 // -----------------------------------------------------------------------
 
-#ifndef __ANDROID__
-#include "GL/glew.h"
+#ifdef __ANDROID__
+#include <GLES3/gl32.h>
 #else
-#define GL_GLEXT_PROTOTYPES
-#include <GL/gl.h>
+#include "GL/glew.h"
 #endif
 
 #include "systems/sdl/sdl_utils.h"
 
 #include <SDL2/SDL.h>
+#ifndef __ANDROID__
 #include <SDL2/SDL_opengl.h>
+#endif
 
 #include <cassert>
+#include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 
@@ -49,16 +52,24 @@
 
 void ShowGLErrors(void) {
   GLenum error;
-  const GLubyte* err_str;
   if ((error = glGetError()) != GL_NO_ERROR) {
-#ifdef __ANDROID__
-    err_str = (GLubyte*)"unknown_gl_error";
-#else
-    err_str = gluErrorString(error);
-#endif
     std::ostringstream oss;
-    oss << "OpenGL Error: " << (char*)err_str;
+    oss << "OpenGL Error: 0x" << std::hex << error;
     throw SystemError(oss.str());
+  }
+}
+
+void DebugShowGLErrors(void) {
+  GLenum error;
+  while ((error = glGetError()) != GL_NO_ERROR) {
+    std::cerr << "DEBUG GL Error: 0x" << std::hex << error << std::endl;
+  }
+}
+
+void CheckGLErrors(const char* location) {
+  GLenum error;
+  if ((error = glGetError()) != GL_NO_ERROR) {
+    std::cerr << "GL_ERROR at " << location << ": 0x" << std::hex << error << std::endl;
   }
 }
 
@@ -66,7 +77,8 @@ void ShowGLErrors(void) {
 
 bool IsNPOTSafe() {
 #ifdef __ANDROID__
-  return false;
+  // OpenGL ES 3.2 fully supports NPOT textures.
+  return true;
 #else
   static bool is_safe = GLEW_VERSION_2_0 && GLEW_ARB_texture_non_power_of_two;
   return is_safe;
@@ -178,6 +190,6 @@ Uint32 MapRGBA(SDL_PixelFormat* fmt, const RGBAColour& in) {
 
 // -----------------------------------------------------------------------
 
-void glColorRGBA(const RGBAColour& rgba) {
-  glColor4ub(rgba.r(), rgba.g(), rgba.b(), rgba.a());
-}
+// glColorRGBA is a no-op in ES 3.2 core profile (no fixed-function glColor4ub).
+// Color is now passed as a vertex attribute via QuadBatch.
+void glColorRGBA(const RGBAColour& /*rgba*/) {}

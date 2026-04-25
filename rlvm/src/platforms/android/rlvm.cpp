@@ -35,8 +35,12 @@
 #include <SDL2/SDL.h>
 #include <android/log.h>
 
+#ifdef __ANDROID__
+#include <GLES3/gl32.h>
+#else
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
+#endif
 
 #include "AndroidRLVMInstance.hpp"
 
@@ -77,34 +81,14 @@ static void appPutToForeground() {
   // SDL_ANDROID_ResumeAudioPlayback();
 
   // TODO(xyz): remove the copypasta here
-  glEnable(GL_TEXTURE_2D);
+  // NOTE: GL_TEXTURE_2D removed - not available in ES 3.2 core profile
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-  // Enable Texture Mapping ( NEW )
-  glEnable(GL_TEXTURE_2D);
-
-  // Enable smooth shading
-  glShadeModel(GL_SMOOTH);
-
-  // Set the background black
+  // ES 3.2 core: no fixed-function state (glShadeModel, glColor4f, etc.)
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-  // Depth buffer setup
-  glClearDepthf(1.0f);
-
-  // Enables Depth Testing
-  glEnable(GL_DEPTH_TEST);
-
+  glDisable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
-
-  // The Type Of Depth Test To Do
-  glDepthFunc(GL_LEQUAL);
-
-  // Really Nice Perspective Calculations
-  glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
-
-  // Full Brightness, 50% Alpha ( NEW )
-  glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void ScreenSizeCallback(const Size& size) {

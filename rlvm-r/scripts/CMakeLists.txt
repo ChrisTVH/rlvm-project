@@ -41,9 +41,8 @@ set(SDL2_MIXER_HASH SHA256=1cfb34c87b26dbdbc7afd68c4f545c0116ab5f90bbfecc5aebe2a
 set(SDL2_IMAGE_VERSION 2.8.2)
 set(SDL2_IMAGE_HASH SHA256=8f486bbfbcf8464dd58c9e5d93394ab0255ce68b51c5a966a918244820a76ddc)
 
-# gl4es: OpenGL → OpenGL ES translation layer (required for rlvm's desktop GL code)
-set(GL4ES_VERSION 1.1.4)
-set(GL4ES_HASH SHA256=b565e717c7d192e936bda25f3cb90ad8db398af56414ec08294b6716574c1a6d)
+# gl4es removed: rlvm now uses OpenGL ES 3.2 natively (Android 7+ / API 24+).
+# libGLESv3 and libEGL are provided by the Android NDK sysroot.
 
 # --- End of configurable options ---
 
@@ -213,8 +212,10 @@ ExternalProject_Add(sndfile
 	--disable-external-libs
 	--disable-full-suite
 
-	# Build only the library src subdir, skip tests (tests require autogen)
-	BUILD_COMMAND ${wrapper_command} $(MAKE)
+	# Touch test source files after configure to prevent autogen regeneration
+	BUILD_COMMAND find <SOURCE_DIR> -name "test_*.c" -exec touch {} +
+	COMMAND find <SOURCE_DIR> -name "test_*.am" -exec touch {} +
+	COMMAND ${wrapper_command} $(MAKE)
 	INSTALL_COMMAND ${wrapper_command} $(MAKE) install
 	COMMAND ${wrapper_command} $(MAKE) install-pkgconfigDATA
 )
@@ -413,31 +414,12 @@ ExternalProject_Add(sdl2_image
 	COMMAND cp <SOURCE_DIR>/include/SDL_image.h ${prefix}/include/SDL2/
 )
 
-ExternalProject_Add(gl4es
-	# gl4es: translates OpenGL desktop calls to OpenGL ES at runtime
-	# Required because rlvm's SDL system uses desktop OpenGL (glBegin etc.)
-	URL https://github.com/ptitSeb/gl4es/archive/refs/tags/v${GL4ES_VERSION}.tar.gz
-	URL_HASH ${GL4ES_HASH}
-	DOWNLOAD_DIR ${download_dir}
-
-	PATCH_COMMAND patch -d <SOURCE_DIR> -p1 -t -N < ${CMAKE_SOURCE_DIR}/patches/gl4es-asm-fix.patch || true
-		COMMAND sed -i '/LOCAL_CFLAGS += -DSTATICLIB/d' <SOURCE_DIR>/Android.mk || true
-		COMMAND sed -i 's/include $(BUILD_SHARED_LIBRARY)/include $(BUILD_STATIC_LIBRARY)/' <SOURCE_DIR>/Android.mk || true
-
-	CONFIGURE_COMMAND ""
-
-	BUILD_COMMAND ${wrapper_command} ndk-build
-	${COMMON_NDK_BUILD_FLAGS}
-
-  INSTALL_COMMAND mkdir -p ${prefix}/lib/
-  COMMAND cp obj/local/${app_abi}/libGL.a ${prefix}/lib/
-  COMMAND cp -r <SOURCE_DIR>/include ${prefix}/
-)
+# gl4es ExternalProject removed (native ES 3.2)
 
 ## --- Main project ---
 
 ExternalProject_Add(rlvm
-	DEPENDS boost ogg vorbis sndfile sdl2 freetype2 sdl2_ttf sdl2_mixer sdl2_image gl4es
+	DEPENDS boost ogg vorbis sndfile sdl2 freetype2 sdl2_ttf sdl2_mixer sdl2_image
 
 	DOWNLOAD_COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/../../rlvm <SOURCE_DIR>
 
@@ -457,7 +439,7 @@ file(WRITE ${CMAKE_SOURCE_DIR}/toolchain/arm/sysroot/usr/include/GL/glew.h "
 #ifndef __GLEW_H__
 #define __GLEW_H__
 
-#include \"gl.h\"
+#include <GLES3/gl32.h>
 
 #ifdef __cplusplus
 extern \"C\" {

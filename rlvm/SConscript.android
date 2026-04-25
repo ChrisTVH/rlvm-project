@@ -1,12 +1,16 @@
 Import('env')
 
 root_env = env.Clone()
-root_env.Append(LIBS=["GL", "c++_shared"])
+# Use native OpenGL ES 3.2 libraries (Android 7+ / API 24+).
+# gl4es has been removed; rlvm now uses ES 3.2 core profile directly.
+root_env.Append(LIBS=["GLESv3", "EGL", "c++_shared"])
 
 root_env.Append(
   CXXFLAGS = [
     "--ansi",
-    "-std=c++11"
+    "-std=c++11",
+    # ES 3.2 headers from NDK sysroot
+    "-I../rlvm-r/scripts/toolchain/arm/sysroot/usr/include",
   ],
 
   LINKFLAGS = [

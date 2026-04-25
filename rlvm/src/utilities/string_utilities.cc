@@ -194,8 +194,34 @@ void CopyOneUtf8Character(const char*& str, string& output) {
     }
   }
 
+  // JisEncoded CP1252 single bytes in the 0xA1-0xBF range.
+  // These overlap with UTF-8 continuation bytes (10xxxxxx pattern), but when
+  // they appear as the LEAD byte they are JisEncoded characters, not stray
+  // continuations.  Uppercase accented letters map here:
+  //   À(0xC0)→0xA1, Á(0xC1)→0xA2, É(0xC9)→0xAA, Í(0xCD)→0xAE, ...
+  // Decode them to real UTF-8 so that cp932_text_buffer is valid and
+  // TextoutGetChar computes correct xmod widths.
+  if (lead >= 0xA1 && lead <= 0xBF) {
+    unsigned char cp1252_byte = lead + 0x1F;
+    uint16_t unicode = Cp::instance(2).Convert(cp1252_byte);
+    if (unicode < 0x80) {
+      output += static_cast<char>(unicode);
+    } else if (unicode < 0x800) {
+      output += static_cast<char>(0xC0 | (unicode >> 6));
+      output += static_cast<char>(0x80 | (unicode & 0x3F));
+    } else {
+      output += static_cast<char>(0xE0 | (unicode >> 12));
+      output += static_cast<char>(0x80 | ((unicode >> 6) & 0x3F));
+      output += static_cast<char>(0x80 | (unicode & 0x3F));
+    }
+    str++;
+    return;
+  }
+
   // Continuation byte (10xxxxxx): copy as a single raw byte.
   // This can happen when the bytecode sends bytes one at a time.
+  // Note: 0xA1-0xBF are handled above as JisEncoded, so only 0x80-0xA0
+  // reach here (genuine stray continuation bytes).
   if ((lead & 0xC0) == 0x80) {
     output += *str++;
     return;

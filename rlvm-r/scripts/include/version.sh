@@ -2,7 +2,7 @@
 
 NDK_VERSION="r27c"
 NDK_HASH="2cd4f36db0d42df39397ab25e72c2519f26e1e7e"  # SHA1 from Google NDK wiki
-ANDROID_API="21"
+ANDROID_API="24"  # OpenGL ES 3.2 requires Android 7.0+ (API 24)
 
 # End of configurable options
 

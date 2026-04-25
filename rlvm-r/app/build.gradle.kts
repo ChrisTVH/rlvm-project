@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId = "io.github.rlvm"
-        minSdk = 21
+        minSdk = 24  // Android 7.0+ required for OpenGL ES 3.2
         targetSdk = 36
         versionCode = 2
         versionName = "26.2"

@@ -28,7 +28,11 @@
 #ifndef SRC_SYSTEMS_SDL_SDL_GRAPHICS_SYSTEM_H_
 #define SRC_SYSTEMS_SDL_SDL_GRAPHICS_SYSTEM_H_
 
+#ifdef __ANDROID__
+#include <GLES3/gl32.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 #include <SDL2/SDL_video.h>
 
 #include <memory>

@@ -22,13 +22,6 @@ See [README.md](README.md) for build instructions.
 
 ## TO-DO
 
-### High Priority
-- [ ] **Complete UTF-8 support**: Fix protagonist dialogs (currently empty with UTF-8 encoding)
-  - Issue: Character name markers (e.g., 0x81 0x96) are not processed correctly
-  - Issue: Protagonist text arrives via `strout` opcode, not `TextoutElement`
-  - Issue: Mixed CP932/UTF-8 encoding in bytecode causes text corruption
-  - Issue: `DisplayName()` is never called for protagonist dialogs
-
 ### Medium Priority
 - [ ] **Font settings**: Allow users to configure font type and size
   - Add font selection in Settings activity
@@ -36,15 +29,25 @@ See [README.md](README.md) for build instructions.
   - Support custom font files
 
 ### Low Priority
-- [ ] **Fix transitions**: Some transitions cut the screen in half
-  - Investigate screen transition rendering
-  - Fix incorrect screen capture during transitions
-
 - [ ] **Fix filters/shaders**: Visual filters not rendering correctly
   - Investigate shader compatibility with OpenGL ES
   - Fix tone curve and color filter rendering
 
 ### Completed
+
+**UTF-8 Support (fully implemented)**:
+- [x] UTF-8 encoding support (encoding=4)
+- [x] UTF-8 codec implementation (utf8.cc, utf8.h)
+- [x] JisEncoded CP1252 character handling (á, é, í, ó, ú, ñ, ¿, ¡)
+- [x] UTF-8 accumulator in RLMachine for fragmented bytes
+- [x] Protagonist dialogs with UTF-8 (strout opcode)
+- [x] Protagonist name placeholder with UTF-8
+- [x] Mixed CP932/UTF-8 encoding handling
+- [x] DisplayName() called for protagonist dialogs
+
+**Screen Transitions**:
+- [x] Fixed screen transitions not cutting in half
+- [x] Fixed rendering calculations during transitions and animations
 
 **Android Application (rlvm-r vs xyzz/rlvm-android)**:
 - [x] Migrated from Java to Kotlin (MainActivity, GameActivity, SettingsActivity)

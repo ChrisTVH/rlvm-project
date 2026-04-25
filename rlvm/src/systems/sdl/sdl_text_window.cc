@@ -27,7 +27,9 @@
 
 #include "systems/sdl/sdl_text_window.h"
 
+#ifndef __ANDROID__
 #include <SDL2/SDL_opengl.h>
+#endif
 #include <SDL2/SDL_ttf.h>
 
 #include <string>

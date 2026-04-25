@@ -25,14 +25,18 @@
 //
 // -----------------------------------------------------------------------
 
-#ifndef __ANDROID__
+#ifdef __ANDROID__
+#include <GLES3/gl32.h>
+#else
 #include "GL/glew.h"
 #endif
 
 #include "systems/sdl/sdl_graphics_system.h"
 
 #include <SDL2/SDL.h>
+#ifndef __ANDROID__
 #include <SDL2/SDL_opengl.h>
+#endif
 
 #if !defined(__APPLE__) && !defined(_WIN32)
 #include <SDL2/SDL_image.h>
@@ -68,6 +72,8 @@
 #include "systems/sdl/sdl_utils.h"
 #include "systems/sdl/shaders.h"
 #include "systems/sdl/texture.h"
+#include "systems/sdl/gl_ortho.h"
+#include "systems/sdl/quad_batch.h"
 #include "utilities/exception.h"
 #include "utilities/graphics.h"
 #include "utilities/lazy_array.h"
@@ -171,11 +177,10 @@ void SDLGraphicsSystem::BeginFrame() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   DebugShowGLErrors();
 
-  // Set the viewport to maintain 4:3 aspect ratio
+  // Viewport for aspect-ratio letterbox/pillarbox
   if (viewport_width_ > 0 && viewport_height_ > 0) {
     glViewport(viewport_x_, viewport_y_, viewport_width_, viewport_height_);
   } else {
-    // Use full window if viewport not set
     int ww, wh;
     SDL_GetWindowSize(screen_, &ww, &wh);
     glViewport(0, 0, ww, wh);
@@ -183,23 +188,18 @@ void SDLGraphicsSystem::BeginFrame() {
   DebugShowGLErrors();
 
   glDisable(GL_DEPTH_TEST);
-  glDisable(GL_CULL_FACE);
-  glDisable(GL_LIGHTING);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   DebugShowGLErrors();
 
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0.0, (GLdouble)screen_size().width(),
-          (GLdouble)screen_size().height(), 0.0, 0.0, 1.0);
-  DebugShowGLErrors();
-
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  DebugShowGLErrors();
-
-  // Full screen shaking moves where the origin is.
+  // Build the shared orthographic projection for this frame.
+  // Screen-shake origin is folded in as a translation.
   Point origin = GetScreenOrigin();
-  glTranslatef(origin.x(), origin.y(), 0);
+  Texture::SetProjection(
+      float(screen_size().width()),
+      float(screen_size().height()),
+      float(origin.x()),
+      float(origin.y()));
 }
 
 void SDLGraphicsSystem::MarkScreenAsDirty(GraphicsUpdateType type) {
@@ -244,40 +244,25 @@ void SDLGraphicsSystem::EndFrame() {
 }
 
 void SDLGraphicsSystem::RedrawLastFrame() {
-  // We won't redraw the screen between when the DrawManual() command is issued
-  // by the bytecode and the first refresh() is called since we need a valid
-  // copy of the screen to work with and we only snapshot the screen during
-  // DrawManual() mode.
   if (screen_contents_texture_valid_) {
-    // Redraw the screen
-    glBindTexture(GL_TEXTURE_2D, screen_contents_texture_);
-    glBegin(GL_QUADS);
-    {
-      int dx1 = 0;
-      int dx2 = screen_size().width();
-      int dy1 = 0;
-      int dy2 = screen_size().height();
+    // Redraw by replaying the captured screen texture via the sprite shader.
+    float w = float(screen_size().width());
+    float h = float(screen_size().height());
+    float ux = w / float(screen_tex_width_);
+    float uy = h / float(screen_tex_height_);
 
-      float x_cord = dx2 / float(screen_tex_width_);
-      float y_cord = dy2 / float(screen_tex_height_);
-
-      glColor4ub(255, 255, 255, 255);
-      glTexCoord2f(0, y_cord);
-      glVertex2i(dx1, dy1);
-      glTexCoord2f(x_cord, y_cord);
-      glVertex2i(dx2, dy1);
-      glTexCoord2f(x_cord, 0);
-      glVertex2i(dx2, dy2);
-      glTexCoord2f(0, 0);
-      glVertex2i(dx1, dy2);
-    }
-    glEnd();
+    glDisable(GL_BLEND);
+    QuadBatch::draw(Shaders::GetSpriteProgram(), Texture::CurrentProjection(),
+                    screen_contents_texture_, 0,
+                    0.0f, 0.0f, w, h,
+                    // UV: y-flipped (capture is bottom-up in GL)
+                    0.0f, uy, ux, 0.0f,
+                    0.0f, 0.0f, 0.0f, 0.0f,
+                    1.0f, 1.0f, 1.0f, 1.0f);
+    glBlendFunc(GL_ONE, GL_ZERO);
 
     DrawCursor();
-
     glFlush();
-
-    // Swap the buffers
     SDL_GL_SwapWindow(screen_);
     ShowGLErrors();
   }
@@ -379,9 +364,9 @@ void SDLGraphicsSystem::SetupVideo() {
 
 #ifdef __ANDROID__
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-  // use opengles 2
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+  // Use OpenGL ES 3.2 (Android 7+, API 24+)
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 #endif
 
   // Set the video mode
@@ -408,6 +393,9 @@ void SDLGraphicsSystem::SetupVideo() {
     throw SystemError(ss.str());
   }
 
+  // Clear any residual GL errors from context creation (common on PowerVR)
+  while (glGetError() != GL_NO_ERROR) {}
+
   // Calculate initial viewport based on window size
   int ww, wh;
   SDL_GetWindowSize(screen_, &ww, &wh);
@@ -423,34 +411,14 @@ void SDLGraphicsSystem::SetupVideo() {
   }
 #endif
 
-  glEnable(GL_TEXTURE_2D);
+  // ES 3.2 core: GL_TEXTURE_2D is always enabled, no fixed-function state.
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-  // Enable Texture Mapping ( NEW )
-  glEnable(GL_TEXTURE_2D);
-
-  // Enable smooth shading
-  glShadeModel(GL_SMOOTH);
-
-  // Set the background black
+  // 2-D sprite rendering: no depth test, alpha blend enabled.
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-  // Depth buffer setup
-  glClearDepth(1.0f);
-
-  // Enables Depth Testing
-  glEnable(GL_DEPTH_TEST);
-
+  glDisable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
-
-  // The Type Of Depth Test To Do
-  glDepthFunc(GL_LEQUAL);
-
-  // Really Nice Perspective Calculations
-  glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
-
-  // Full Brightness, 50% Alpha ( NEW )
-  glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   // Create a small 32x32 texture for storing what's behind the mouse
   // cursor.
@@ -461,7 +429,7 @@ void SDLGraphicsSystem::SetupVideo() {
   screen_tex_width_ = SafeSize(screen_size().width());
   screen_tex_height_ = SafeSize(screen_size().height());
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screen_tex_width_, screen_tex_height_,
-               0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+               0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
   ShowGLErrors();
 }

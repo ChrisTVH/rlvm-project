@@ -32,6 +32,9 @@
 
 #include "base/notification_service.h"
 #include "platforms/gcn/gcn_utils.h"
+#include "systems/sdl/quad_batch.h"
+#include "systems/sdl/shaders.h"
+#include "systems/sdl/texture.h"
 
 // -----------------------------------------------------------------------
 // ImageRect
@@ -144,26 +147,19 @@ void GCNGraphics::drawImageStretched(gcn::Image* image,
   float texX2 = source.x2() / (float)srcImage->getTextureWidth();
   float texY2 = source.y2() / (float)srcImage->getTextureHeight();
 
-  glBindTexture(GL_TEXTURE_2D, srcImage->getTextureHandle());
-
-  glEnable(GL_TEXTURE_2D);
   glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  // Draw a textured quad -- the image
-  glBegin(GL_QUADS);
-  glTexCoord2f(texX1, texY1);
-  glVertex3i(dstX, dstY, 0);
-
-  glTexCoord2f(texX1, texY2);
-  glVertex3i(dstX, dstY + height, 0);
-
-  glTexCoord2f(texX2, texY2);
-  glVertex3i(dstX + width, dstY + height, 0);
-
-  glTexCoord2f(texX2, texY1);
-  glVertex3i(dstX + width, dstY, 0);
-  glEnd();
-  glDisable(GL_TEXTURE_2D);
+  // Draw via QuadBatch (ES 3.2 – no fixed-function glBegin/glEnd)
+  QuadBatch::draw(Shaders::GetSpriteProgram(),
+                  Texture::CurrentProjection(),
+                  srcImage->getTextureHandle(), 0,
+                  float(dstX),         float(dstY),
+                  float(dstX + width), float(dstY + height),
+                  texX1, texY1, texX2, texY2,
+                  0.0f, 0.0f, 0.0f, 0.0f,
+                  1.0f, 1.0f, 1.0f, 1.0f);
+  glBlendFunc(GL_ONE, GL_ZERO);
 }
 
 // -----------------------------------------------------------------------

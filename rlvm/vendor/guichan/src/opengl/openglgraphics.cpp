@@ -6,11 +6,11 @@
  * /______/ //______/ //_/ //_____/\ /_/ //_/ //_/ //_/ //_/ /|_/ /
  * \______\/ \______\/ \_\/ \_____\/ \_\/ \_\/ \_\/ \_\/ \_\/ \_\/
  *
- * Copyright (c) 2004 - 2008 Olof Naessén and Per Larsson
+ * Copyright (c) 2004 - 2008 Olof NaessÃ©n and Per Larsson
  *
  *
  * Per Larsson a.k.a finalman
- * Olof Naessén a.k.a jansem/yakslem
+ * Olof NaessÃ©n a.k.a jansem/yakslem
  *
  * Visit: http://guichan.sourceforge.net
  *
@@ -46,6 +46,11 @@
  */
 
 #include "guichan/opengl/openglgraphics.hpp"
+#ifdef __ANDROID__
+#include "systems/sdl/quad_batch.h"
+#include "systems/sdl/shaders.h"
+#include "systems/sdl/texture.h"
+#endif
 
 #if defined (_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -57,6 +62,8 @@
 #define glVertex3i glVertex3f
 #elif defined(__APPLE__)
 #include <OpenGL/gl.h>
+#elif defined(__ANDROID__)
+#include <GLES3/gl32.h>
 #else
 #include <GL/gl.h>
 #endif
@@ -84,6 +91,18 @@ namespace gcn
 
     }
 
+    void OpenGLGraphics::_beginDraw()
+    {
+#ifdef __ANDROID__
+        // ES 3.2: no glPushAttrib, no matrix stack, no fixed function.
+        // Just set up blend state; projection is managed by Texture::SetProjection.
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_SCISSOR_TEST);
+        pushClipArea(Rectangle(0, 0, mWidth, mHeight));
+    }
+#else  // !__ANDROID__
     void OpenGLGraphics::_beginDraw()
     {
         glPushAttrib(
@@ -139,8 +158,14 @@ namespace gcn
         pushClipArea(Rectangle(0, 0, mWidth, mHeight));
     }
 
-    void OpenGLGraphics::_endDraw()
+#endif  // __ANDROID__
+
+        void OpenGLGraphics::_endDraw()
     {
+#ifdef __ANDROID__
+        popClipArea();
+        glDisable(GL_SCISSOR_TEST);
+#else
         glMatrixMode(GL_MODELVIEW);
         glPopMatrix();
 
@@ -153,6 +178,7 @@ namespace gcn
         glPopAttrib();
 
         popClipArea();
+#endif
     }
 
     bool OpenGLGraphics::pushClipArea(Rectangle area)
@@ -221,7 +247,9 @@ namespace gcn
 
         glBindTexture(GL_TEXTURE_2D, srcImage->getTextureHandle());
 
+#ifndef __ANDROID__
         glEnable(GL_TEXTURE_2D);
+#endif
 
         // Check if blending already is enabled
         if (!mAlpha)
@@ -230,6 +258,17 @@ namespace gcn
         }
 
         // Draw a textured quad -- the image
+#ifdef __ANDROID__
+        // ES 3.2: use QuadBatch instead of glBegin/glEnd
+        QuadBatch::draw(Shaders::GetSpriteProgram(),
+                        Texture::CurrentProjection(),
+                        srcImage->getTextureHandle(), 0,
+                        float(dstX),         float(dstY),
+                        float(dstX + width), float(dstY + height),
+                        texX1, texY1, texX2, texY2,
+                        0.0f, 0.0f, 0.0f, 0.0f,
+                        1.0f, 1.0f, 1.0f, 1.0f);
+#else
         glBegin(GL_QUADS);
         glTexCoord2f(texX1, texY1);
         glVertex3i(dstX, dstY, 0);
@@ -243,7 +282,10 @@ namespace gcn
         glTexCoord2f(texX2, texY1);
         glVertex3i(dstX + width, dstY, 0);
         glEnd();
+#endif
+#ifndef __ANDROID__
         glDisable(GL_TEXTURE_2D);
+#endif
 
         // Don't disable blending if the color has alpha
         if (!mAlpha)
@@ -264,9 +306,11 @@ namespace gcn
         x += top.xOffset;
         y += top.yOffset;
 
+#ifndef __ANDROID__
         glBegin(GL_POINTS);
         glVertex2i(x, y);
         glEnd();
+#endif  // __ANDROID__
     }
 
     void OpenGLGraphics::drawLine(int x1, int y1, int x2, int y2)
@@ -283,22 +327,28 @@ namespace gcn
         x2 += top.xOffset;
         y2 += top.yOffset;
 
+#ifndef __ANDROID__
         glBegin(GL_LINES);
         glVertex2f(x1 + 0.375f,
                    y1 + 0.375f);
         glVertex2f(x2 + 1.0f - 0.375f,
                    y2 + 1.0f - 0.375f);
         glEnd();
+#endif  // __ANDROID__
 
+#ifndef __ANDROID__
         glBegin(GL_POINTS);
         glVertex2f(x2 + 1.0f - 0.375f,
                    y2 + 1.0f - 0.375f);
         glEnd();
+#endif  // __ANDROID__
 
+#ifndef __ANDROID__
         glBegin(GL_POINTS);
         glVertex2f(x1 + 0.375f,
                    y1 + 0.375f);
         glEnd();
+#endif  // __ANDROID__
     }
 
     void OpenGLGraphics::drawRectangle(const Rectangle& rectangle)
@@ -310,6 +360,7 @@ namespace gcn
 
         const ClipRectangle& top = mClipStack.top();
 
+#ifndef __ANDROID__
         glBegin(GL_LINE_LOOP);
         glVertex2f(rectangle.x + top.xOffset,
                    rectangle.y + top.yOffset);
@@ -320,6 +371,7 @@ namespace gcn
         glVertex2f(rectangle.x + top.xOffset,
                    rectangle.y + rectangle.height + top.yOffset);
         glEnd();
+#endif  // __ANDROID__
     }
 
     void OpenGLGraphics::fillRectangle(const Rectangle& rectangle)
@@ -330,27 +382,39 @@ namespace gcn
         }
 
         const ClipRectangle& top = mClipStack.top();
+        float x1 = float(rectangle.x + top.xOffset);
+        float y1 = float(rectangle.y + top.yOffset);
+        float x2 = float(rectangle.x + rectangle.width  + top.xOffset);
+        float y2 = float(rectangle.y + rectangle.height + top.yOffset);
 
+#ifdef __ANDROID__
+        QuadBatch::draw(Shaders::GetSpriteProgram(),
+                        Texture::CurrentProjection(),
+                        0, 0,
+                        x1, y1, x2, y2,
+                        0.0f, 0.0f, 1.0f, 1.0f,
+                        0.0f, 0.0f, 0.0f, 0.0f,
+                        mColor.r / 255.0f, mColor.g / 255.0f,
+                        mColor.b / 255.0f, mColor.a / 255.0f);
+#else
         glBegin(GL_QUADS);
-        glVertex2i(rectangle.x + top.xOffset,
-                   rectangle.y + top.yOffset);
-        glVertex2i(rectangle.x + rectangle.width + top.xOffset,
-                   rectangle.y + top.yOffset);
-        glVertex2i(rectangle.x + rectangle.width + top.xOffset,
-                   rectangle.y + rectangle.height + top.yOffset);
-        glVertex2i(rectangle.x + top.xOffset,
-                   rectangle.y + rectangle.height + top.yOffset);
+        glVertex2f(x1, y1);
+        glVertex2f(x2, y1);
+        glVertex2f(x2, y2);
+        glVertex2f(x1, y2);
         glEnd();
+#endif
     }
 
     void OpenGLGraphics::setColor(const Color& color)
     {
         mColor = color;
+#ifndef __ANDROID__
         glColor4ub((GLubyte) color.r,
                    (GLubyte) color.g,
                    (GLubyte) color.b,
                    (GLubyte) color.a);
-
+#endif
         mAlpha = color.a != 255;
 
         if (mAlpha)

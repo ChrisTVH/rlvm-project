@@ -28,6 +28,11 @@
 #include "systems/sdl/sdl_surface.h"
 
 #include <SDL2/SDL.h>
+
+// Fallback for GLES types not in core headers
+#ifndef GL_UNSIGNED_INT_8_8_8_8_REV
+#define GL_UNSIGNED_INT_8_8_8_8_REV 0x8367
+#endif
 #include <cassert>
 #include <iostream>
 #include <sstream>
@@ -460,48 +465,48 @@ static void determineProperties(SDL_Surface* surface,
 
     // Determine the byte order of the surface
     SDL_PixelFormat* format = surface->format;
-    if (bytes_per_pixel == 4) {
-      // If the order is RGBA...
-      if (format->Rmask == 0xFF000000 && format->Amask == 0xFF)
-        byte_order = GL_RGBA;
-      // OSX's crazy ARGB pixel format
-      else if ((format->Amask == 0x0 || format->Amask == 0xFF000000) &&
-               format->Rmask == 0xFF0000 && format->Gmask == 0xFF00 &&
-               format->Bmask == 0xFF) {
-        // This is an insane hack to get around OSX's crazy byte order
-        // for alpha on PowerPC. Since there isn't a GL_ARGB type, we
-        // need to specify BGRA and then tell the byte type to be
-        // reversed order.
-        //
-        // 20070303: Whoah! Is this the internal format on all
-        // platforms!?
-        byte_order = GL_BGRA;
-        byte_type = GL_UNSIGNED_INT_8_8_8_8_REV;
-      } else {
-        std::ios_base::fmtflags f =
-            std::cerr.flags(std::ios::hex | std::ios::uppercase);
-        std::cerr << "Unknown mask: (" << format->Rmask << ", " << format->Gmask
-                  << ", " << format->Bmask << ", " << format->Amask << ")"
-                  << std::endl;
-        std::cerr.flags(f);
-      }
-    } else if (bytes_per_pixel == 3) {
-      // For now, just assume RGB.
-      byte_order = GL_RGB;
-      std::cerr << "Warning: Am I really an RGB Surface? Check"
-                << " Texture::Texture()!" << std::endl;
+#ifdef __ANDROID__
+    // On Android, SDL surfaces may be ABGR8888 or RGBA8888.
+    // GLES 3.2 doesn't support GL_UNSIGNED_INT_8_8_8_8_REV, so we
+    // always upload as GL_RGBA/GL_UNSIGNED_BYTE and convert in CPU.
+    // The caller (uploadTextureIfNeeded) handles the conversion.
+    (void)format;  // masks don't matter for GLES upload path
+#else
+    if (format->Rmask == 0xFF000000 && format->Amask == 0xFF)
+      byte_order = GL_RGBA;
+    // OSX's crazy ARGB pixel format
+    else if ((format->Amask == 0x0 || format->Amask == 0xFF000000) &&
+             format->Rmask == 0xFF0000 && format->Gmask == 0xFF00 &&
+             format->Bmask == 0xFF) {
+      byte_order = GL_BGRA;
+      byte_type = GL_UNSIGNED_INT_8_8_8_8_REV;
     } else {
-      std::ostringstream oss;
-      oss << "Error loading texture: bytes_per_pixel == "
-          << int(bytes_per_pixel) << " and we only handle 3 or 4.";
-      throw SystemError(oss.str());
+      std::ios_base::fmtflags f =
+          std::cerr.flags(std::ios::hex | std::ios::uppercase);
+      std::cerr << "Unknown mask: (" << format->Rmask << ", " << format->Gmask
+                << ", " << format->Bmask << ", " << format->Amask << ")"
+                << std::endl;
+      std::cerr.flags(f);
     }
+#endif
   }
   SDL_UnlockSurface(surface);
 
   if (is_mask) {
-    // Compile shader for use:
-    bytes_per_pixel = GL_ALPHA;
+    // Mask textures: keep RGBA format to preserve alpha channel data.
+    // The mask's alpha channel contains the soft edge feathering data.
+    // Using GL_ALPHA internal format is deprecated in ES 3.2.
+    // byte_order stays GL_RGBA, byte_type stays GL_UNSIGNED_BYTE.
+    if (bytes_per_pixel == 4)
+      bytes_per_pixel = GL_RGBA;
+    else if (bytes_per_pixel == 3)
+      bytes_per_pixel = GL_RGB;
+  } else {
+    // In GLES 3.2 the internal format must be a symbolic enum, not a raw number.
+    if (bytes_per_pixel == 4)
+      bytes_per_pixel = GL_RGBA;
+    else if (bytes_per_pixel == 3)
+      bytes_per_pixel = GL_RGB;
   }
 }
 
@@ -515,12 +520,26 @@ void SDLSurface::uploadTextureIfNeeded() const {
       determineProperties(surface_, is_mask_, bytes_per_pixel, byte_order,
                           byte_type);
 
+#ifdef __ANDROID__
+      // On Android, convert surface to ABGR8888 which in little-endian memory
+      // is stored as [R][G][B][A] — exactly what GL_RGBA + GL_UNSIGNED_BYTE expects.
+      // Note: SDL_PIXELFORMAT_RGBA8888 stores [A][B][G][R] in memory (wrong for GL).
+      SDL_Surface* upload_surface = surface_;
+      SDL_Surface* converted = nullptr;
+      if (surface_->format->format != SDL_PIXELFORMAT_ABGR8888) {
+        converted = SDL_ConvertSurfaceFormat(surface_, SDL_PIXELFORMAT_ABGR8888, 0);
+        if (converted) {
+          upload_surface = converted;
+        }
+      }
+#endif
+
       // ---------------------------------------------------------------------
 
       // Figure out the optimal way of splitting up the image.
       std::vector<int> x_pieces, y_pieces;
-      x_pieces = segmentPicture(surface_->w);
-      y_pieces = segmentPicture(surface_->h);
+      x_pieces = segmentPicture(upload_surface->w);
+      y_pieces = segmentPicture(upload_surface->h);
 
       int x_offset = 0;
       for (std::vector<int>::const_iterator it = x_pieces.begin();
@@ -528,7 +547,7 @@ void SDLSurface::uploadTextureIfNeeded() const {
         int y_offset = 0;
         for (std::vector<int>::const_iterator jt = y_pieces.begin();
              jt != y_pieces.end(); ++jt) {
-          textures_.emplace_back(surface_, x_offset, y_offset, *it, *jt,
+          textures_.emplace_back(upload_surface, x_offset, y_offset, *it, *jt,
                                  bytes_per_pixel, byte_order, byte_type);
 
           y_offset += *jt;
@@ -536,11 +555,35 @@ void SDLSurface::uploadTextureIfNeeded() const {
 
         x_offset += *it;
       }
+
+#ifdef __ANDROID__
+      if (converted) {
+        SDL_FreeSurface(converted);
+      }
+#endif
     } else {
       // Reupload the textures without reallocating them.
+#ifdef __ANDROID__
+      // Convert surface for reupload too
+      SDL_Surface* upload_surface = surface_;
+      SDL_Surface* converted = nullptr;
+      if (surface_->format->format != SDL_PIXELFORMAT_ABGR8888) {
+        converted = SDL_ConvertSurfaceFormat(surface_, SDL_PIXELFORMAT_ABGR8888, 0);
+        if (converted) {
+          upload_surface = converted;
+        }
+      }
+#endif
+
       for_each(textures_.begin(), textures_.end(), [&](TextureRecord& record) {
-        record.reupload(surface_, dirty_rectangle_);
+        record.reupload(upload_surface, dirty_rectangle_);
       });
+
+#ifdef __ANDROID__
+      if (converted) {
+        SDL_FreeSurface(converted);
+      }
+#endif
     }
 
     dirty_rectangle_ = Rect();

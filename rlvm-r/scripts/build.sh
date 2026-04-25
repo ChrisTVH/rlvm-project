@@ -238,8 +238,8 @@ cmake ../.. \
 	-DBOOST_ADDRESS_MODEL=$BOOST_ADDRESS_MODEL \
 	-DFFMPEG_CPU=$FFMPEG_CPU \
 	-DNDK_CC="$RESOLVED_CC" \
-	-DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS -L$CLANG_RUNTIME_DIR -L$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYSROOT_LIB_DIR/21" \
-	-DCMAKE_SHARED_LINKER_FLAGS="$LDFLAGS -L$CLANG_RUNTIME_DIR -L$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYSROOT_LIB_DIR/21"
+	-DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS -L$CLANG_RUNTIME_DIR -L$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYSROOT_LIB_DIR/$ANDROID_API" \
+	-DCMAKE_SHARED_LINKER_FLAGS="$LDFLAGS -L$CLANG_RUNTIME_DIR -L$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYSROOT_LIB_DIR/$ANDROID_API"
 
 make -j$NCPU
 

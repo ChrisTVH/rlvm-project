@@ -37,13 +37,8 @@ class RGBColour;
 class RGBAColour;
 
 void ShowGLErrors(void);
-
-inline void DebugShowGLErrors() {
-#ifndef SRC_SYSTEMS_SDL_SDL_UTILS_H_
-  // Don't do roundtrips to the graphics card for most debugging.
-  ShowGLErrors();
-#endif  // SRC_SYSTEMS_SDL_SDL_UTILS_H_
-}
+void DebugShowGLErrors(void);
+void CheckGLErrors(const char* location);
 
 void reportSDLError(const std::string& sdl_name,
                     const std::string& function_name);
