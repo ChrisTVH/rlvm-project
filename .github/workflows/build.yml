@@ -23,6 +23,10 @@ jobs:
           chmod +x scripts/build.sh
           ./scripts/build.sh --arch arm64
 
+      - name: Generate Gradle wrapper jar
+        working-directory: rlvm-r
+        run: gradle wrapper --gradle-version 9.1.0
+
       - name: Build debug APK
         working-directory: rlvm-r
         run: |
