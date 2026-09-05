@@ -17,6 +17,10 @@ jobs:
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y scons python3 cmake
 
+      - name: Patch freetype2 download mirror
+        working-directory: rlvm-r/scripts
+        run: grep -rl "download.savannah.gnu.org" . | xargs -r sed -i 's/download\.savannah\.gnu\.org/download-mirror.savannah.gnu.org/g'
+
       - name: Build native libraries
         working-directory: rlvm-r
         run: |
