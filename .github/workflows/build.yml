@@ -1,0 +1,43 @@
+name: Build rlvm-r APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y scons python3 cmake
+
+      - name: Patch freetype2 download mirror
+        working-directory: rlvm-r/scripts
+        run: grep -rl "download.savannah.gnu.org" . | xargs -r sed -i 's/download\.savannah\.gnu\.org/download-mirror.savannah.gnu.org/g'
+
+      - name: Build native libraries
+        working-directory: rlvm-r
+        run: |
+          chmod +x scripts/build.sh
+          ./scripts/build.sh --arch arm64
+
+      - name: Generate Gradle wrapper jar
+        working-directory: rlvm-r
+        run: gradle wrapper --gradle-version 9.3.1
+
+      - name: Build debug APK
+        working-directory: rlvm-r
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rlvm-r-debug-apk
+          path: rlvm-r/app/build/outputs/apk/debug/*.apk
